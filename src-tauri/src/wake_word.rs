@@ -12,35 +12,88 @@ use std::time::{Duration, Instant};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 const INFERENCE_INTERVAL: Duration = Duration::from_millis(250);
-const DETECTION_DEBOUNCE: Duration = Duration::from_secs(3);
+// The model produces a short cluster of high scores for one spoken phrase. A 1.2 s guard
+// suppresses that cluster without swallowing the next deliberate calibration attempt.
+const DETECTION_DEBOUNCE: Duration = Duration::from_millis(1_200);
 const VOICE_RMS_GATE: f32 = 0.006;
+const AUDIO_LEVEL_INTERVAL: Duration = Duration::from_millis(100);
+const TRAILING_INFERENCE_COUNT: usize = 4;
 const PRIMARY_MODEL_NAME: &str = "hey_aidoo";
 const CONFIRMATION_MODEL_NAME: &str = "hey_aidoo_confirmation";
 const CONFIRMATION_HISTORY: usize = 3;
 
 struct ConfirmationState {
     recent_primary: VecDeque<bool>,
+    recent_confirmation: VecDeque<bool>,
+}
+
+struct AudioLevelReporter {
+    frames: usize,
+    peak: f32,
+    interval_frames: usize,
+}
+
+impl AudioLevelReporter {
+    fn new(sample_rate: u32) -> Self {
+        Self {
+            frames: 0,
+            peak: 0.0,
+            interval_frames: ((sample_rate as u64 * AUDIO_LEVEL_INTERVAL.as_millis() as u64)
+                / 1_000)
+                .max(1) as usize,
+        }
+    }
+
+    fn observe(&mut self, sample_count: usize, level: f32) -> Option<f32> {
+        self.frames = self.frames.saturating_add(sample_count);
+        self.peak = self.peak.max(level);
+        if self.frames < self.interval_frames {
+            return None;
+        }
+        self.frames = 0;
+        Some(std::mem::take(&mut self.peak))
+    }
 }
 
 impl ConfirmationState {
     fn new() -> Self {
         Self {
             recent_primary: VecDeque::with_capacity(CONFIRMATION_HISTORY),
+            recent_confirmation: VecDeque::with_capacity(CONFIRMATION_HISTORY),
         }
     }
 
     fn pending(&self) -> bool {
         self.recent_primary.iter().any(|detected| *detected)
+            || self.recent_confirmation.iter().any(|detected| *detected)
     }
 
     fn observe(&mut self, primary: bool, confirmation: bool) -> bool {
-        let confirmed = confirmation && self.pending();
+        let confirmed = (confirmation
+            && (primary || self.recent_primary.iter().any(|detected| *detected)))
+            || (primary && self.recent_confirmation.iter().any(|detected| *detected));
         self.recent_primary.push_back(primary);
+        self.recent_confirmation.push_back(confirmation);
         while self.recent_primary.len() > CONFIRMATION_HISTORY {
             self.recent_primary.pop_front();
         }
+        while self.recent_confirmation.len() > CONFIRMATION_HISTORY {
+            self.recent_confirmation.pop_front();
+        }
         confirmed
     }
+}
+
+fn wake_phrase_detected(
+    state: &mut ConfirmationState,
+    primary_score: f32,
+    confirmation_score: f32,
+    primary_threshold: f32,
+    confirmation_threshold: f32,
+) -> bool {
+    let primary = primary_score >= primary_threshold;
+    let confirmation = confirmation_score >= confirmation_threshold;
+    state.observe(primary, confirmation)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,6 +106,9 @@ pub enum WakeWordEvent {
         rms: f32,
         primary: f32,
         confirmation: f32,
+    },
+    Level {
+        rms: f32,
     },
     Failed(String),
 }
@@ -73,6 +129,17 @@ struct ActiveListener {
     stream: Option<Stream>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
+}
+
+struct InferenceContext {
+    audio_buffer: Arc<Mutex<VecDeque<i16>>>,
+    recent_voice: Arc<AtomicBool>,
+    audio: mpsc::Receiver<()>,
+    stop: Arc<AtomicBool>,
+    events: mpsc::Sender<WakeWordEvent>,
+    sample_rate: u32,
+    primary_threshold: f32,
+    confirmation_threshold: f32,
 }
 
 impl Drop for ActiveListener {
@@ -249,8 +316,7 @@ fn start_on_device(
     let config: StreamConfig = supported.into();
     let sample_rate = config.sample_rate.0;
     let channels = config.channels;
-    let model = WakeWordModel::new(&[primary_model_path, confirmation_model_path], sample_rate)
-        .map_err(|error| format!("Wake-word моделът не може да се зареди: {error}"))?;
+    let model = load_wake_word_model(primary_model_path, confirmation_model_path, sample_rate)?;
     let audio_buffer = Arc::new(Mutex::new(VecDeque::<i16>::with_capacity(
         sample_rate as usize * 3,
     )));
@@ -266,19 +332,21 @@ fn start_on_device(
         .spawn(move || {
             inference_loop(
                 model,
-                worker_audio_buffer,
-                worker_recent_voice,
-                audio_rx,
-                worker_stop,
-                worker_events,
-                sample_rate,
-                primary_threshold,
-                confirmation_threshold,
+                InferenceContext {
+                    audio_buffer: worker_audio_buffer,
+                    recent_voice: worker_recent_voice,
+                    audio: audio_rx,
+                    stop: worker_stop,
+                    events: worker_events,
+                    sample_rate,
+                    primary_threshold,
+                    confirmation_threshold,
+                },
             )
         })
         .map_err(|error| error.to_string())?;
 
-    let error_events = events;
+    let error_events = events.clone();
     let error_callback = move |error| {
         let _ = error_events.send(WakeWordEvent::Failed(format!(
             "Микрофонът за гласово активиране прекъсна: {error}"
@@ -289,6 +357,8 @@ fn start_on_device(
         SampleFormat::F32 => {
             let buffer = audio_buffer.clone();
             let voice = recent_voice.clone();
+            let level_events = events.clone();
+            let mut level_reporter = AudioLevelReporter::new(sample_rate);
             device.build_input_stream(
                 &config,
                 move |data: &[f32], _| {
@@ -298,6 +368,8 @@ fn start_on_device(
                         &audio_tx,
                         downmix_f32(data, channels),
                         max_buffer_samples,
+                        &mut level_reporter,
+                        &level_events,
                     );
                 },
                 error_callback,
@@ -307,6 +379,8 @@ fn start_on_device(
         SampleFormat::I16 => {
             let buffer = audio_buffer.clone();
             let voice = recent_voice.clone();
+            let level_events = events.clone();
+            let mut level_reporter = AudioLevelReporter::new(sample_rate);
             device.build_input_stream(
                 &config,
                 move |data: &[i16], _| {
@@ -316,33 +390,41 @@ fn start_on_device(
                         &audio_tx,
                         downmix_i16(data, channels),
                         max_buffer_samples,
+                        &mut level_reporter,
+                        &level_events,
                     );
                 },
                 error_callback,
                 None,
             )
         }
-        SampleFormat::U16 => device.build_input_stream(
-            &config,
-            move |data: &[u16], _| {
-                let converted = data
-                    .iter()
-                    .map(|sample| {
-                        ((*sample as f32 / u16::MAX as f32) * 2.0 - 1.0) * i16::MAX as f32
-                    })
-                    .map(|sample| sample as i16)
-                    .collect::<Vec<_>>();
-                push_audio(
-                    &audio_buffer,
-                    &recent_voice,
-                    &audio_tx,
-                    downmix_i16(&converted, channels),
-                    max_buffer_samples,
-                );
-            },
-            error_callback,
-            None,
-        ),
+        SampleFormat::U16 => {
+            let level_events = events;
+            let mut level_reporter = AudioLevelReporter::new(sample_rate);
+            device.build_input_stream(
+                &config,
+                move |data: &[u16], _| {
+                    let converted = data
+                        .iter()
+                        .map(|sample| {
+                            ((*sample as f32 / u16::MAX as f32) * 2.0 - 1.0) * i16::MAX as f32
+                        })
+                        .map(|sample| sample as i16)
+                        .collect::<Vec<_>>();
+                    push_audio(
+                        &audio_buffer,
+                        &recent_voice,
+                        &audio_tx,
+                        downmix_i16(&converted, channels),
+                        max_buffer_samples,
+                        &mut level_reporter,
+                        &level_events,
+                    );
+                },
+                error_callback,
+                None,
+            )
+        }
         other => return Err(format!("Неподдържан аудио формат: {other:?}")),
     };
     let stream = match stream_result {
@@ -366,15 +448,30 @@ fn start_on_device(
     })
 }
 
+fn load_wake_word_model(
+    primary_model_path: &std::path::Path,
+    confirmation_model_path: &std::path::Path,
+    sample_rate: u32,
+) -> Result<WakeWordModel, String> {
+    WakeWordModel::new(&[primary_model_path, confirmation_model_path], sample_rate)
+        .map_err(|error| format!("Wake-word моделът не може да се зареди: {error}"))
+}
+
 fn push_audio(
     buffer: &Mutex<VecDeque<i16>>,
     recent_voice: &AtomicBool,
     signal: &mpsc::SyncSender<()>,
     samples: Vec<i16>,
     max_samples: usize,
+    level_reporter: &mut AudioLevelReporter,
+    events: &mpsc::Sender<WakeWordEvent>,
 ) {
-    if rms(&samples) >= VOICE_RMS_GATE {
+    let level = rms(&samples);
+    if level >= VOICE_RMS_GATE {
         recent_voice.store(true, Ordering::Release);
+    }
+    if let Some(rms) = level_reporter.observe(samples.len(), level) {
+        let _ = events.send(WakeWordEvent::Level { rms });
     }
     if let Ok(mut buffer) = buffer.lock() {
         buffer.extend(samples);
@@ -385,18 +482,8 @@ fn push_audio(
     let _ = signal.try_send(());
 }
 
-fn inference_loop(
-    mut model: WakeWordModel,
-    audio_buffer: Arc<Mutex<VecDeque<i16>>>,
-    recent_voice: Arc<AtomicBool>,
-    audio: mpsc::Receiver<()>,
-    stop: Arc<AtomicBool>,
-    events: mpsc::Sender<WakeWordEvent>,
-    sample_rate: u32,
-    primary_threshold: f32,
-    confirmation_threshold: f32,
-) {
-    let window_samples = sample_rate as usize * 2;
+fn inference_loop(mut model: WakeWordModel, context: InferenceContext) {
+    let window_samples = context.sample_rate as usize * 2;
     let mut last_inference = Instant::now()
         .checked_sub(INFERENCE_INTERVAL)
         .unwrap_or_else(Instant::now);
@@ -404,19 +491,23 @@ fn inference_loop(
         .checked_sub(DETECTION_DEBOUNCE)
         .unwrap_or_else(Instant::now);
     let mut confirmation_state = ConfirmationState::new();
-    while !stop.load(Ordering::Acquire) {
-        match audio.recv_timeout(Duration::from_millis(100)) {
+    let mut trailing_inferences = 0;
+    while !context.stop.load(Ordering::Acquire) {
+        match context.audio.recv_timeout(Duration::from_millis(100)) {
             Ok(()) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
         let confirmation_pending = confirmation_state.pending();
-        if (!recent_voice.swap(false, Ordering::AcqRel) && !confirmation_pending)
-            || last_inference.elapsed() < INFERENCE_INTERVAL
-        {
+        if !should_run_inference(
+            last_inference.elapsed() >= INFERENCE_INTERVAL,
+            &context.recent_voice,
+            confirmation_pending,
+            &mut trailing_inferences,
+        ) {
             continue;
         }
-        let contiguous = match audio_buffer.lock() {
+        let contiguous = match context.audio_buffer.lock() {
             Ok(buffer) if buffer.len() >= window_samples => buffer
                 .iter()
                 .skip(buffer.len() - window_samples)
@@ -429,24 +520,27 @@ fn inference_loop(
             Ok(scores) => {
                 let primary = scores.get(PRIMARY_MODEL_NAME).copied().unwrap_or(0.0);
                 let confirmation = scores.get(CONFIRMATION_MODEL_NAME).copied().unwrap_or(0.0);
-                let _ = events.send(WakeWordEvent::Scores {
+                let _ = context.events.send(WakeWordEvent::Scores {
                     rms: rms(&contiguous),
                     primary,
                     confirmation,
                 });
-                let confirmed = confirmation_state.observe(
-                    primary >= primary_threshold,
-                    confirmation >= confirmation_threshold,
+                let confirmed = wake_phrase_detected(
+                    &mut confirmation_state,
+                    primary,
+                    confirmation,
+                    context.primary_threshold,
+                    context.confirmation_threshold,
                 );
                 if confirmed && last_detection.elapsed() >= DETECTION_DEBOUNCE {
                     last_detection = Instant::now();
-                    let _ = events.send(WakeWordEvent::Detected {
-                        confidence: confirmation,
+                    let _ = context.events.send(WakeWordEvent::Detected {
+                        confidence: primary.max(confirmation),
                     });
                 }
             }
             Err(error) => {
-                let _ = events.send(WakeWordEvent::Failed(format!(
+                let _ = context.events.send(WakeWordEvent::Failed(format!(
                     "Wake-word разпознаването спря: {error}"
                 )));
                 break;
@@ -455,9 +549,28 @@ fn inference_loop(
     }
 }
 
+fn should_run_inference(
+    interval_ready: bool,
+    recent_voice: &AtomicBool,
+    confirmation_pending: bool,
+    trailing_inferences: &mut usize,
+) -> bool {
+    if !interval_ready {
+        return false;
+    }
+    if recent_voice.swap(false, Ordering::AcqRel) {
+        *trailing_inferences = TRAILING_INFERENCE_COUNT;
+    }
+    let should_run = confirmation_pending || *trailing_inferences > 0;
+    if should_run && *trailing_inferences > 0 {
+        *trailing_inferences -= 1;
+    }
+    should_run
+}
+
 #[cfg(test)]
 mod confirmation_tests {
-    use super::ConfirmationState;
+    use super::{wake_phrase_detected, ConfirmationState};
 
     #[test]
     fn confirmation_accepts_any_of_the_previous_three_intervals() {
@@ -472,16 +585,54 @@ mod confirmation_tests {
     }
 
     #[test]
-    fn confirmation_rejects_same_interval_and_expired_candidates() {
+    fn confirmation_accepts_same_interval_and_reverse_adjacent_order() {
         let mut same_interval = ConfirmationState::new();
-        assert!(!same_interval.observe(true, true));
+        assert!(same_interval.observe(true, true));
 
+        let mut reverse_order = ConfirmationState::new();
+        assert!(!reverse_order.observe(false, true));
+        assert!(reverse_order.observe(true, false));
+    }
+
+    #[test]
+    fn repeated_primary_detection_without_confirmation_is_rejected() {
+        let mut state = ConfirmationState::new();
+        assert!(!state.observe(true, false));
+        assert!(!state.observe(true, false));
+    }
+
+    #[test]
+    fn strong_primary_detection_without_confirmation_is_rejected() {
+        let mut state = ConfirmationState::new();
+        assert!(!wake_phrase_detected(&mut state, 0.96, 0.01, 0.68, 0.76));
+    }
+
+    #[test]
+    fn isolated_medium_primary_score_is_rejected_as_a_false_positive() {
+        let mut state = ConfirmationState::new();
+        assert!(!wake_phrase_detected(&mut state, 0.84, 0.01, 0.68, 0.76));
+    }
+
+    #[test]
+    fn repeated_medium_primary_scores_without_confirmation_are_rejected() {
+        let mut state = ConfirmationState::new();
+        assert!(!wake_phrase_detected(&mut state, 0.84, 0.01, 0.68, 0.76));
+        assert!(!wake_phrase_detected(&mut state, 0.84, 0.01, 0.68, 0.76));
+    }
+
+    #[test]
+    fn confirmation_rejects_expired_and_isolated_candidates() {
         let mut expired = ConfirmationState::new();
         assert!(!expired.observe(true, false));
         for _ in 0..3 {
             assert!(!expired.observe(false, false));
         }
         assert!(!expired.observe(false, true));
+
+        let mut isolated = ConfirmationState::new();
+        assert!(!isolated.observe(true, false));
+        let mut isolated = ConfirmationState::new();
+        assert!(!isolated.observe(false, true));
     }
 }
 
@@ -564,6 +715,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bundled_detector_exposes_both_required_classifier_scores() {
+        let resource_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("wakeword");
+        let primary = resource_dir.join("hey_aidoo.onnx");
+        let confirmation = resource_dir.join("hey_aidoo_confirmation.onnx");
+        let mut model = load_wake_word_model(&primary, &confirmation, 16_000).unwrap();
+
+        let scores = model.predict(&vec![0; 32_000]).unwrap();
+
+        assert!(scores.contains_key(PRIMARY_MODEL_NAME));
+        assert!(
+            scores.contains_key(CONFIRMATION_MODEL_NAME),
+            "the temporal detector cannot recognize any phrase without its confirmation classifier"
+        );
+    }
+
+    #[test]
     fn downmix_preserves_mono_and_averages_channels() {
         assert_eq!(downmix_i16(&[100, -100, 300, 100], 2), vec![0, 200]);
         assert_eq!(downmix_i16(&[7, -9], 1), vec![7, -9]);
@@ -580,9 +749,27 @@ mod tests {
         let buffer = Mutex::new(VecDeque::new());
         let recent_voice = AtomicBool::new(false);
         let (signal, receiver) = mpsc::sync_channel(1);
+        let (events, _event_receiver) = mpsc::channel();
+        let mut level_reporter = AudioLevelReporter::new(100);
 
-        push_audio(&buffer, &recent_voice, &signal, vec![1, 2, 3], 4);
-        push_audio(&buffer, &recent_voice, &signal, vec![4, 5, 6], 4);
+        push_audio(
+            &buffer,
+            &recent_voice,
+            &signal,
+            vec![1, 2, 3],
+            4,
+            &mut level_reporter,
+            &events,
+        );
+        push_audio(
+            &buffer,
+            &recent_voice,
+            &signal,
+            vec![4, 5, 6],
+            4,
+            &mut level_reporter,
+            &events,
+        );
 
         assert_eq!(
             buffer.lock().unwrap().iter().copied().collect::<Vec<_>>(),
@@ -592,6 +779,51 @@ mod tests {
         assert!(matches!(
             receiver.try_recv(),
             Err(mpsc::TryRecvError::Empty)
+        ));
+    }
+
+    #[test]
+    fn audio_level_reporter_emits_frequent_direct_microphone_feedback() {
+        let mut reporter = AudioLevelReporter::new(1_000);
+        assert_eq!(reporter.observe(40, 0.01), None);
+        assert_eq!(reporter.observe(60, 0.04), Some(0.04));
+        assert_eq!(reporter.observe(100, 0.02), Some(0.02));
+    }
+
+    #[test]
+    fn inference_keeps_voice_pending_until_the_interval_is_ready() {
+        let recent_voice = AtomicBool::new(true);
+        let mut trailing = 0;
+        assert!(!should_run_inference(
+            false,
+            &recent_voice,
+            false,
+            &mut trailing
+        ));
+        assert!(recent_voice.load(Ordering::Acquire));
+        assert!(should_run_inference(
+            true,
+            &recent_voice,
+            false,
+            &mut trailing
+        ));
+        assert!(!recent_voice.load(Ordering::Acquire));
+        assert_eq!(trailing, TRAILING_INFERENCE_COUNT - 1);
+
+        for expected in (0..TRAILING_INFERENCE_COUNT - 1).rev() {
+            assert!(should_run_inference(
+                true,
+                &recent_voice,
+                false,
+                &mut trailing
+            ));
+            assert_eq!(trailing, expected);
+        }
+        assert!(!should_run_inference(
+            true,
+            &recent_voice,
+            false,
+            &mut trailing
         ));
     }
 }

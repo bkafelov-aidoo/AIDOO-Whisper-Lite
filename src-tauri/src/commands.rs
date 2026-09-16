@@ -1,5 +1,199 @@
 use super::*;
 
+const MAX_LIVE_SESSION_DURATION: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+pub(super) fn release_live_session(app: &AppHandle, generation: Option<u64>) -> bool {
+    let state = app.state::<AppState>();
+    if generation
+        .is_some_and(|expected| state.live_session_generation.load(Ordering::Acquire) != expected)
+    {
+        return false;
+    }
+    if !state.live_session_active.swap(false, Ordering::AcqRel) {
+        return false;
+    }
+    finish_live_usage(app);
+    state.operation_active.store(false, Ordering::Release);
+    if let Ok(mut phase) = state.live_phase.lock() {
+        *phase = "idle".into();
+    }
+    refresh_tray_menu(app);
+    schedule_wake_word_reconcile(app, std::time::Duration::from_millis(300));
+    true
+}
+
+#[tauri::command]
+pub(super) fn prepare_live_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if state.live_session_active.load(Ordering::Acquire) {
+        return Err("Вече има активен разговор с AIDOO.".into());
+    }
+    let operation = acquire_operation(&app, &state)?;
+    stop_wake_word_listener(&state);
+    api_key_from_state(&state)?;
+    state
+        .live_backend_response_ids
+        .lock()
+        .map_err(|_| "Локалният отчет за разходите е заключен.")?
+        .clear();
+    state.live_session_active.store(true, Ordering::Release);
+    let generation = state
+        .live_session_generation
+        .fetch_add(1, Ordering::AcqRel)
+        .wrapping_add(1);
+    operation.disarm();
+    refresh_tray_menu(&app);
+    storage::append_diagnostic("GPT-Live session preparation started");
+
+    let timeout_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(MAX_LIVE_SESSION_DURATION).await;
+        if release_live_session(&timeout_app, Some(generation)) {
+            storage::append_diagnostic("GPT-Live session reached the 10-minute safety limit");
+            let _ = timeout_app.emit("live:force-close", "duration-limit");
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub(super) async fn create_live_session(
+    sdp: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<live::LiveSessionAnswer, String> {
+    if !state.live_session_active.load(Ordering::Acquire) {
+        return Err("GPT-Live режимът не е подготвен.".into());
+    }
+    let api_key = api_key_from_state(&state)?;
+    let answer = match live::create_session(&sdp, &api_key).await {
+        Ok(answer) => answer,
+        Err(error) => {
+            release_live_session(&app, None);
+            return Err(error);
+        }
+    };
+    if state.live_session_active.load(Ordering::Acquire) {
+        start_live_usage(&state);
+    }
+    storage::append_diagnostic("GPT-Live session started");
+    Ok(answer)
+}
+
+#[tauri::command]
+pub(super) fn end_live_session(app: AppHandle) {
+    if release_live_session(&app, None) {
+        storage::append_diagnostic("GPT-Live session ended");
+    }
+}
+
+#[tauri::command]
+pub(super) fn record_live_backend_usage(
+    response_id: String,
+    model: String,
+    usage: models::LiveBackendUsage,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    const MAX_TOKENS_PER_RESPONSE: u64 = 10_000_000;
+    let valid_response_id = !response_id.is_empty()
+        && response_id.len() <= 160
+        && response_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+    let valid_usage = usage.input_tokens <= MAX_TOKENS_PER_RESPONSE
+        && usage.output_tokens <= MAX_TOKENS_PER_RESPONSE
+        && usage.cached_input_tokens <= MAX_TOKENS_PER_RESPONSE
+        && usage.cache_write_tokens <= MAX_TOKENS_PER_RESPONSE
+        && usage
+            .cached_input_tokens
+            .checked_add(usage.cache_write_tokens)
+            .is_some_and(|discounted| discounted <= usage.input_tokens);
+    if !valid_response_id || !models::is_live_backend_model(&model) || !valid_usage {
+        return Err("OpenAI върна невалидни backend usage данни.".into());
+    }
+
+    let mut recorded = state
+        .live_backend_response_ids
+        .lock()
+        .map_err(|_| "Локалният отчет за разходите е заключен.")?;
+    if recorded.contains(&response_id) {
+        return Ok(());
+    }
+    persist_live_backend_usage(&app, &model, &usage)?;
+    recorded.insert(response_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub(super) fn set_live_phase(
+    phase: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    const ALLOWED: &[&str] = &[
+        "idle",
+        "preparing",
+        "connecting",
+        "listening",
+        "speaking",
+        "working",
+        "switching",
+        "closing",
+        "error",
+    ];
+    if !ALLOWED.contains(&phase.as_str()) {
+        return Err("Невалидно състояние на AIDOO асистента.".into());
+    }
+    let previous = state.live_phase.lock().ok().map(|mut current| {
+        let previous = current.clone();
+        *current = phase.clone();
+        previous
+    });
+    if let Some(sound) = previous
+        .as_deref()
+        .and_then(|previous| feedback_sound::for_live_transition(previous, &phase))
+    {
+        feedback_sound::play(&app, sound);
+    }
+    let _ = app.emit("assistant:phase", &phase);
+    if phase == "idle" {
+        let recording_idle = state
+            .recording_status
+            .lock()
+            .map(|value| value.as_str() == "idle")
+            .unwrap_or(false);
+        if recording_idle {
+            if let Some(window) = app.get_webview_window("overlay") {
+                let _ = window.hide();
+            }
+        }
+    } else {
+        show_recording_overlay(&app);
+        if let Some(window) = app.get_webview_window("overlay") {
+            let _ = window.set_ignore_cursor_events(false);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub(super) fn request_live_stop(app: AppHandle) {
+    let _ = app.emit("live:force-close", "user-request");
+}
+
+#[tauri::command]
+pub(super) fn take_assistant_request(state: State<'_, AppState>) -> bool {
+    state.assistant_start_request.take()
+}
+
+#[tauri::command]
+pub(super) fn start_voice_dictation(app: AppHandle) -> Result<audio::AudioStartInfo, String> {
+    start_recording_inner(&app, "voice").inspect_err(|error| set_error(&app, error))
+}
+
 #[tauri::command]
 pub(super) fn start_wake_word_calibration(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
@@ -57,6 +251,11 @@ pub(super) fn bootstrap(app: AppHandle, state: State<'_, AppState>) -> Bootstrap
         .lock()
         .map(|value| value.clone())
         .unwrap_or_default();
+    let usage = state
+        .usage
+        .lock()
+        .map(|value| value.clone())
+        .unwrap_or_default();
     let failed_recording = state
         .failed_recording
         .lock()
@@ -67,12 +266,25 @@ pub(super) fn bootstrap(app: AppHandle, state: State<'_, AppState>) -> Bootstrap
         .lock()
         .map(|value| value.is_some())
         .unwrap_or(false);
+    let has_aidoo_password = aidoo_keyring_entry()
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+        .is_some();
+    let aidoo_connection_error = state
+        .aidoo_connection_error
+        .lock()
+        .ok()
+        .and_then(|value| value.clone());
     BootstrapState {
         settings,
         history,
+        usage,
         failed_recording,
         microphones: audio::microphone_names(),
         has_api_key,
+        has_aidoo_password,
+        aidoo_connected: state.aidoo.connected(),
+        aidoo_connection_error,
         accessibility_granted: accessibility_granted(),
         app_version: app.package_info().version.to_string(),
         default_output_directory: storage::default_output_dir().to_string_lossy().to_string(),
@@ -90,6 +302,11 @@ pub(super) fn overlay_bootstrap(state: State<'_, AppState>) -> OverlayBootstrapS
     OverlayBootstrapState {
         ui_language,
         recording: recording_snapshot(&state),
+        assistant_phase: state
+            .live_phase
+            .lock()
+            .map(|phase| phase.clone())
+            .unwrap_or_else(|_| "idle".into()),
     }
 }
 

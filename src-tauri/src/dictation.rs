@@ -193,6 +193,7 @@ pub(super) fn wake_word_should_listen(state: &AppState) -> bool {
         && (calibrating || idle)
         && !state.operation_active.load(Ordering::Acquire)
         && !state.recording_active.load(Ordering::Acquire)
+        && !state.live_session_active.load(Ordering::Acquire)
 }
 
 pub(super) fn stop_wake_word_listener(state: &AppState) {
@@ -539,6 +540,7 @@ async fn stop_and_transcribe_inner(app: &AppHandle) -> Result<TranscriptionCompl
         transcription::transcribe(&request_audio, &api_key, &settings, Some(callback)).await;
     match result {
         Ok(text) => {
+            record_transcription_usage(app, captured.duration_seconds, &settings.model);
             set_progress(app, 100, "finishing_locally", true);
             let completed_text = text.clone();
             let completed = match finalize_success(

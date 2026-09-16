@@ -1,19 +1,25 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+mod aidoo;
 mod app_ui;
 mod audio;
 mod commands;
 mod dictation;
 mod feedback_sound;
+mod live;
 mod recovery;
 mod wake_runtime;
 mod wake_word;
 
+use aidoo::commands::*;
+use aidoo::protocol::*;
+use aidoo::schedule::*;
 use app_ui::*;
 use commands::*;
 use dictation::*;
 use recovery::*;
+use usage::*;
 use wake_runtime::*;
 
 mod models;
@@ -23,12 +29,14 @@ mod storage;
 mod tests;
 mod text_insertion;
 mod transcription;
+mod usage;
 
 use chrono::{Local, Utc};
 use models::{
     AppSettings, BootstrapState, FailedRecording, OverlayBootstrapState, RecordingProgress,
-    RecordingSnapshot, TranscriptEntry, TranscriptionCompleted,
+    RecordingSnapshot, TranscriptEntry, TranscriptionCompleted, UsageLedger,
 };
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Write};
 #[cfg(unix)]
@@ -46,6 +54,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 const KEYRING_SERVICE: &str = "app.aidoo.whisper-lite";
 const KEYRING_USER: &str = "openai-api-key";
+const AIDOO_KEYRING_USER: &str = "aidoo-password";
 const TRAY_ID: &str = "aidoo-whisper-lite";
 const APP_MENU_ID: &str = "aidoo-app-menu";
 const APP_QUIT_MENU_ID: &str = "aidoo-app-quit";
@@ -58,6 +67,19 @@ const CHARGED_RECOVERY_ERROR: &str =
 enum RecoveryPlan {
     FinishLocally(String),
     Transcribe,
+}
+
+#[derive(Default)]
+struct AssistantStartRequest(AtomicBool);
+
+impl AssistantStartRequest {
+    fn request(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    fn take(&self) -> bool {
+        self.0.swap(false, Ordering::AcqRel)
+    }
 }
 
 fn recovery_plan(failed: &FailedRecording) -> Result<RecoveryPlan, String> {
@@ -73,6 +95,7 @@ fn recovery_plan(failed: &FailedRecording) -> Result<RecoveryPlan, String> {
 struct AppState {
     settings: Mutex<AppSettings>,
     history: Mutex<Vec<TranscriptEntry>>,
+    usage: Mutex<UsageLedger>,
     failed_recording: Mutex<Option<FailedRecording>>,
     recorder: audio::RecorderService,
     wake_word: wake_word::WakeWordService,
@@ -89,6 +112,14 @@ struct AppState {
     wake_word_error: Mutex<Option<String>>,
     wake_word_listening: AtomicBool,
     wake_word_calibrating: AtomicBool,
+    live_session_active: AtomicBool,
+    live_session_generation: AtomicU64,
+    live_usage_timing: Mutex<Option<usage::LiveUsageTiming>>,
+    live_backend_response_ids: Mutex<HashSet<String>>,
+    live_phase: Mutex<String>,
+    assistant_start_request: AssistantStartRequest,
+    aidoo: aidoo::runtime::AidooRuntime,
+    aidoo_connection_error: Mutex<Option<String>>,
     api_key: Mutex<Option<Zeroizing<String>>>,
 }
 
@@ -98,6 +129,7 @@ impl AppState {
         audio::cleanup_stale_temporary_audio();
         let mut history = storage::load_history();
         recover_pending_history_deletion(&mut history);
+        let usage = storage::load_usage(&history);
         let api_key = keyring_entry()
             .ok()
             .and_then(|entry| entry.get_password().ok())
@@ -109,6 +141,7 @@ impl AppState {
         Self {
             settings: Mutex::new(storage::load_settings()),
             history: Mutex::new(history),
+            usage: Mutex::new(usage),
             failed_recording: Mutex::new(failed_recording),
             recorder: audio::RecorderService::new(),
             wake_word: wake_word::WakeWordService::new(),
@@ -129,6 +162,14 @@ impl AppState {
             wake_word_error: Mutex::new(None),
             wake_word_listening: AtomicBool::new(false),
             wake_word_calibrating: AtomicBool::new(false),
+            live_session_active: AtomicBool::new(false),
+            live_session_generation: AtomicU64::new(0),
+            live_usage_timing: Mutex::new(None),
+            live_backend_response_ids: Mutex::new(HashSet::new()),
+            live_phase: Mutex::new("idle".into()),
+            assistant_start_request: AssistantStartRequest::default(),
+            aidoo: aidoo::runtime::AidooRuntime::new(),
+            aidoo_connection_error: Mutex::new(None),
             api_key: Mutex::new(api_key),
         }
     }
@@ -136,6 +177,10 @@ impl AppState {
 
 fn keyring_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|error| error.to_string())
+}
+
+fn aidoo_keyring_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(KEYRING_SERVICE, AIDOO_KEYRING_USER).map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "macos")]
@@ -199,7 +244,19 @@ fn install_tray(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main_window(app, false),
             "settings" => show_main_window(app, true),
-            "stop" => request_dictation_stop(app),
+            "stop" => {
+                if app
+                    .state::<AppState>()
+                    .live_session_active
+                    .load(Ordering::Acquire)
+                {
+                    if release_live_session(app, None) {
+                        let _ = app.emit("live:force-close", "tray-stop");
+                    }
+                } else {
+                    request_dictation_stop(app);
+                }
+            }
             "copy-error" => {
                 let state = app.state::<AppState>();
                 let error = state
@@ -274,6 +331,7 @@ pub fn run() {
             install_wake_word_events(app.handle().clone());
             install_macos_power_observers(app.handle().clone());
             schedule_wake_word_reconcile(app.handle(), std::time::Duration::from_millis(500));
+            schedule_aidoo_auto_reconnect(app.handle().clone(), false);
             storage::append_diagnostic("application started");
             Ok(())
         })
@@ -283,11 +341,45 @@ pub fn run() {
             update_settings,
             save_api_key,
             delete_api_key,
+            connect_aidoo,
+            reconnect_aidoo,
+            disconnect_aidoo,
+            aidoo_search_patients,
+            aidoo_select_patient,
+            aidoo_next_patient,
+            aidoo_begin_status,
+            aidoo_start_status_visit,
+            aidoo_apply_status,
+            aidoo_finish_status,
+            aidoo_add_procedure,
+            aidoo_write_diagnosis,
+            aidoo_write_official_note,
+            aidoo_find_schedule_slot,
+            aidoo_book_schedule_slot,
+            aidoo_status_catalog,
+            aidoo_diagnosis_catalog,
+            aidoo_procedure_catalog,
+            aidoo_active_treatments,
+            aidoo_create_status_visit,
+            aidoo_prepare_status_draft,
+            aidoo_confirm_status_draft,
+            aidoo_cancel_status_draft,
+            aidoo_prepare_treatment_draft,
+            aidoo_confirm_treatment_draft,
+            aidoo_cancel_treatment_draft,
             begin_shortcut_capture,
             cancel_shortcut_capture,
             test_microphone,
             start_wake_word_calibration,
             stop_wake_word_calibration,
+            prepare_live_session,
+            create_live_session,
+            end_live_session,
+            record_live_backend_usage,
+            set_live_phase,
+            request_live_stop,
+            take_assistant_request,
+            start_voice_dictation,
             start_recording,
             stop_and_transcribe,
             retry_failed_transcription,
@@ -327,6 +419,7 @@ pub fn run() {
         tauri::RunEvent::Resumed => {
             stop_wake_word_listener(&app.state::<AppState>());
             schedule_wake_word_reconcile(app, std::time::Duration::from_secs(1));
+            schedule_aidoo_auto_reconnect(app.clone(), true);
         }
         _ => {}
     });

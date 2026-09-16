@@ -68,9 +68,9 @@ pub(super) fn install_wake_word_events(app: AppHandle) {
                         storage::append_diagnostic(&format!(
                             "wake word detected; confidence={confidence:.3}"
                         ));
-                        if let Err(error) = start_recording_inner(&app, "voice") {
-                            set_error(&app, &error);
-                        }
+                        state.assistant_start_request.request();
+                        show_main_window(&app, false);
+                        let _ = app.emit("assistant:requested", ());
                     }
                     wake_word::WakeWordEvent::Scores {
                         rms,
@@ -82,6 +82,9 @@ pub(super) fn install_wake_word_events(app: AppHandle) {
                             .wake_word_calibrating
                             .load(Ordering::Acquire)
                         {
+                            storage::append_diagnostic(&format!(
+                                "wake calibration score; rms={rms:.5} primary={primary:.5} confirmation={confirmation:.5}"
+                            ));
                             let _ = app.emit(
                                 "wake-word:calibration-score",
                                 serde_json::json!({
@@ -90,6 +93,15 @@ pub(super) fn install_wake_word_events(app: AppHandle) {
                                     "confirmation": confirmation,
                                 }),
                             );
+                        }
+                    }
+                    wake_word::WakeWordEvent::Level { rms } => {
+                        if app
+                            .state::<AppState>()
+                            .wake_word_calibrating
+                            .load(Ordering::Acquire)
+                        {
+                            let _ = app.emit("wake-word:calibration-level", rms);
                         }
                     }
                     wake_word::WakeWordEvent::Failed(error) => {

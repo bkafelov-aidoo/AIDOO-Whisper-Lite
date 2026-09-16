@@ -3,19 +3,22 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { createEventScope } from "./lib/event-scope";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { AlertCircle, Check, History, LoaderCircle, Mic, RefreshCw, Settings } from "lucide-react";
+import { AlertCircle, Check, CircleDollarSign, History, LoaderCircle, MessageCircle, Mic, RefreshCw, Settings } from "lucide-react";
 import { errorMessage, resolveLanguage, translator } from "./i18n";
-import { type AppLanguage, type AppSettings, type BootstrapState, type FailedRecording, type RecordingSnapshot, type TranscriptEntry, type TranscriptionCompleted } from "./types";
+import { type AppLanguage, type AppSettings, type BootstrapState, type FailedRecording, type RecordingSnapshot, type TranscriptEntry, type TranscriptionCompleted, type UsageLedger } from "./types";
 import { type ToastHandler } from "./ui-types";
 import { appStatus, formatShortcut } from "./lib/presentation";
 import { Dashboard } from "./pages/Dashboard";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AssistantPage } from "./pages/AssistantPage";
+import { UsagePage } from "./pages/UsagePage";
 import { Onboarding } from "./components/Onboarding";
 import { DeleteDialog } from "./components/DeleteDialog";
 import type { ToastTone } from "./ui-types";
+import { useLiveConversation } from "./hooks/useLiveConversation";
 
-type Page = "dictation" | "history" | "settings";
+type Page = "dictation" | "assistant" | "history" | "usage" | "settings";
 
 export default function App() {
   const [data, setData] = useState<BootstrapState | null>(null);
@@ -32,6 +35,16 @@ export default function App() {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 4200);
   }, []);
+
+  const showLiveError = useCallback((reason: unknown) => {
+    showToast(errorMessage(reason, languageRef.current), "error");
+  }, [showToast]);
+  const handleAssistantDictation = useCallback(() => {
+    setPage("dictation");
+    showToast(translator(languageRef.current)("assistantDictationStarted"));
+  }, [showToast]);
+  const handleAssistantRequested = useCallback(() => setPage("assistant"), []);
+  const live = useLiveConversation(data?.settings.microphoneName ?? null, showLiveError, handleAssistantDictation, handleAssistantRequested);
 
   const refresh = useCallback(async () => {
     try {
@@ -63,7 +76,13 @@ export default function App() {
         return { ...current, history: [payload.entry, ...current.history.filter((item) => item.id !== payload.entry!.id)].slice(0, 10) };
       });
     });
+    events.listen<UsageLedger>("usage:changed", ({ payload }) => {
+      setData((current) => current ? { ...current, usage: payload } : current);
+    });
     events.listen<string>("toast", ({ payload }) => showToast(errorMessage(payload, languageRef.current), "warning"));
+    events.listen<boolean>("aidoo:connection-changed", () => {
+      void refresh().catch(() => undefined);
+    });
     events.listen<FailedRecording | null>("failed-recording:changed", ({ payload }) => {
       setData((current) => current ? { ...current, failedRecording: payload } : current);
     });
@@ -101,7 +120,9 @@ export default function App() {
   }
 
   const shortcut = formatShortcut(data.settings.dictationShortcut);
-  const isBusy = ["starting", "recording", "transcribing"].includes(data.recording.state);
+  const recordingBusy = ["starting", "recording", "transcribing"].includes(data.recording.state);
+  const liveBusy = !["idle", "error"].includes(live.phase);
+  const isBusy = recordingBusy || liveBusy;
   const status = appStatus(data, language);
 
   const runTestDictation = async () => {
@@ -134,12 +155,14 @@ export default function App() {
         </div>
         <nav>
           <NavButton active={page === "dictation"} disabled={isBusy} icon={<Mic />} label={t("dictation")} onClick={() => setPage("dictation")} />
+          <NavButton active={page === "assistant"} disabled={recordingBusy} icon={<MessageCircle />} label={t("assistant")} onClick={() => setPage("assistant")} />
           <NavButton active={page === "history"} disabled={isBusy} icon={<History />} label={t("history")} badge={data.history.length || undefined} onClick={() => setPage("history")} />
+          <NavButton active={page === "usage"} disabled={isBusy} icon={<CircleDollarSign />} label={t("usage")} onClick={() => setPage("usage")} />
           <NavButton active={page === "settings"} disabled={isBusy} icon={<Settings />} label={t("settings")} onClick={() => setPage("settings")} />
         </nav>
         <div className={`sidebar-status ${status.tone}`}>
           <i />
-          <span>{status.label}</span>
+          <span>{liveBusy ? (live.phase === "speaking" ? t("liveSpeaking") : live.phase === "listening" ? t("liveListening") : t("liveConnecting")) : status.label}</span>
           <kbd>{shortcut}</kbd>
         </div>
       </aside>
@@ -171,6 +194,15 @@ export default function App() {
             onRetranscribe={retranscribe}
           />
         )}
+        {page === "assistant" && (
+          <AssistantPage
+            live={live}
+            language={language}
+            available={data.settings.onboardingComplete && data.hasApiKey}
+            dictationBusy={recordingBusy}
+            aidooConnected={data.aidooConnected}
+          />
+        )}
         {page === "history" && (
           <HistoryPage
             history={data.history}
@@ -188,6 +220,7 @@ export default function App() {
             onDelete={setDeleteTarget}
           />
         )}
+        {page === "usage" && <UsagePage usage={data.usage} language={language} />}
         {page === "settings" && (
           <SettingsPage
             data={data}

@@ -15,6 +15,10 @@ export interface AppSettings {
   automaticMicrophoneFallback: boolean;
   wakeWordEnabled: boolean;
   wakeWordAutoStop: boolean;
+  aidooClinicSlug: string | null;
+  aidooClinicUrl: string | null;
+  aidooEmail: string | null;
+  aidooBrowserSyncEnabled: boolean;
   dictationShortcut: ShortcutBinding;
 }
 
@@ -27,6 +31,35 @@ export interface TranscriptEntry {
   language: string;
   audioPath: string | null;
   textPath: string | null;
+}
+
+export interface UsageEntry {
+  id: string;
+  kind: "live" | "liveBackend" | "transcription";
+  createdAt: string;
+  durationMillis: number;
+  model: string;
+  rateNanoUsdPerMinute: number;
+  costNanoUsd: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  importedFromHistory: boolean;
+}
+
+export interface UsageLedger {
+  entries: UsageEntry[];
+  liveDurationMillis: number;
+  transcriptionDurationMillis: number;
+  liveCostNanoUsd: number;
+  liveBackendCostNanoUsd: number;
+  transcriptionCostNanoUsd: number;
+  liveSessionCount: number;
+  liveBackendResponseCount: number;
+  liveBackendInputTokens: number;
+  liveBackendOutputTokens: number;
+  transcriptionCount: number;
 }
 
 export interface FailedRecording {
@@ -69,9 +102,13 @@ export interface RecordingSnapshot {
 export interface BootstrapState {
   settings: AppSettings;
   history: TranscriptEntry[];
+  usage: UsageLedger;
   failedRecording: FailedRecording | null;
   microphones: string[];
   hasApiKey: boolean;
+  hasAidooPassword: boolean;
+  aidooConnected: boolean;
+  aidooConnectionError: string | null;
   accessibilityGranted: boolean;
   appVersion: string;
   defaultOutputDirectory: string;
@@ -81,6 +118,7 @@ export interface BootstrapState {
 export interface OverlayBootstrapState {
   uiLanguage: "auto" | "bg" | "en";
   recording: RecordingSnapshot;
+  assistantPhase: "idle" | "preparing" | "connecting" | "listening" | "speaking" | "working" | "switching" | "closing" | "error";
 }
 
 export interface TranscriptionCompleted {

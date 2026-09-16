@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isEnabled } from "@tauri-apps/plugin-autostart";
-import { AudioLines, Check, CircleArrowRight, CircleHelp, ExternalLink, FileText, FolderOpen, KeyRound, Languages, LoaderCircle, Mic, Power, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { AudioLines, Check, CircleArrowRight, CircleHelp, ExternalLink, FileText, FolderOpen, KeyRound, Languages, Link2, LoaderCircle, Mic, Power, RefreshCw, ShieldCheck, Unplug, X } from "lucide-react";
 import { errorMessage, translator } from "../i18n";
 import { type AppLanguage, type AppSettings, type BootstrapState, type MicrophoneProbe } from "../types";
 import { type ToastHandler } from "../ui-types";
@@ -13,6 +13,14 @@ import { useShortcutCapture } from "../hooks/useShortcutCapture";
 import { WakeWordCalibrationDialog } from "../components/WakeWordCalibrationDialog";
 
 const SUPPORT_EMAIL_URL = "mailto:support@aidoo.bg";
+const DEFAULT_AIDOO_CLINIC_LINK = "https://app.aidoo.bg/clinics/<slug>/login";
+
+function savedAidooClinicLink(settings: AppSettings) {
+  if (settings.aidooClinicUrl) return settings.aidooClinicUrl;
+  return settings.aidooClinicSlug
+    ? `https://aidoo-web.on.dev-craft.tech/clinics/${settings.aidooClinicSlug}/login`
+    : "";
+}
 
 export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToast, onOpenOnboarding }: {
   data: BootstrapState;
@@ -27,6 +35,10 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
   const [draft, setDraft] = useState(data.settings);
   const [apiKey, setApiKey] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
+  const [aidooBusy, setAidooBusy] = useState(false);
+  const [aidooClinicLink, setAidooClinicLink] = useState(savedAidooClinicLink(data.settings));
+  const [aidooEmail, setAidooEmail] = useState(data.settings.aidooEmail ?? "");
+  const [aidooPassword, setAidooPassword] = useState("");
   const [shortcutBusy, setShortcutBusy] = useState(false);
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [microphoneBusy, setMicrophoneBusy] = useState(false);
@@ -34,13 +46,16 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
   const [saveBusy, setSaveBusy] = useState(false);
   const [calibrationOpen, setCalibrationOpen] = useState(false);
   const launchAtLoginDirty = useRef(false);
-  const controlsDisabled = isBusy || keyBusy || shortcutBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy || calibrationOpen;
+  const controlsDisabled = isBusy || keyBusy || aidooBusy || shortcutBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy || calibrationOpen;
   const shortcutButtonDisabled = isBusy || keyBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy;
+  const aidooIdentityChanged = aidooClinicLink.trim() !== savedAidooClinicLink(data.settings) || aidooEmail.trim() !== (data.settings.aidooEmail ?? "");
   useShortcutCapture(shortcutBusy, setShortcutBusy, (binding) => setDraft((current) => ({ ...current, dictationShortcut: binding })), (message) => onToast(errorMessage(message, language), "error"));
 
   useEffect(() => {
     launchAtLoginDirty.current = false;
     setDraft(data.settings);
+    setAidooClinicLink(savedAidooClinicLink(data.settings));
+    setAidooEmail(data.settings.aidooEmail ?? "");
   }, [data.settings]);
   useEffect(() => {
     let disposed = false;
@@ -72,6 +87,22 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
       <p className="section-help">{t("apiHelp")}</p><p className="instruction-note"><CircleHelp />{t("apiSteps")}</p>
       <div className="api-row"><input type="password" aria-label={t("apiTitle")} autoComplete="new-password" spellCheck={false} value={apiKey} disabled={controlsDisabled} onChange={(event) => setApiKey(event.target.value)} placeholder={data.hasApiKey ? "••••••••••••••••••" : "sk-…"} /><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl("https://platform.openai.com/api-keys"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("createKey")}</button><button className="primary-button" disabled={controlsDisabled || !apiKey.trim()} onClick={async () => { setKeyBusy(true); try { await invoke("save_api_key", { apiKey }); setApiKey(""); await onRefresh(); onToast(t("keySaved")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{keyBusy ? <LoaderCircle className="spin" /> : <ShieldCheck />}{t("verifySave")}</button></div>
       {data.hasApiKey && <button className="text-button danger" disabled={controlsDisabled} onClick={async () => { setKeyBusy(true); try { await invoke("delete_api_key"); await onRefresh(); onToast(t("deleted")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{t("removeKey")}</button>}
+    </SettingsSection>
+    <SettingsSection icon={<Link2 />} title={t("aidooConnection")}>
+      <p className="section-help">{t("aidooConnectionHelp")}</p>
+      <p className={`connection-status ${data.aidooConnected ? "connected" : ""}`}><span />{data.aidooConnected ? t("aidooConnected") : data.hasAidooPassword ? t("aidooConfigured") : t("aidooNotConfigured")}</p>
+      {data.aidooConnectionError && <p className="connection-error">{errorMessage(data.aidooConnectionError, language)}</p>}
+      <div className="aidoo-connection-grid">
+        <label><span>{t("aidooClinicSlug")}</span><input type="url" value={aidooClinicLink} disabled={controlsDisabled} autoCapitalize="none" spellCheck={false} onChange={(event) => setAidooClinicLink(event.target.value)} placeholder={DEFAULT_AIDOO_CLINIC_LINK} /></label>
+        <label><span>{t("aidooEmail")}</span><input type="email" value={aidooEmail} disabled={controlsDisabled} autoCapitalize="none" spellCheck={false} onChange={(event) => setAidooEmail(event.target.value)} /></label>
+        <label><span>{t("aidooPassword")}</span><input type="password" value={aidooPassword} disabled={controlsDisabled} autoComplete="new-password" onChange={(event) => setAidooPassword(event.target.value)} placeholder={data.hasAidooPassword ? "••••••••••••" : ""} /></label>
+      </div>
+      <div className="inline-actions">
+        <button className="primary-button" disabled={controlsDisabled || !aidooClinicLink.trim() || !aidooEmail.trim() || (!aidooPassword && (!data.hasAidooPassword || aidooIdentityChanged))} onClick={async () => { setAidooBusy(true); try { if (aidooPassword) { await invoke("connect_aidoo", { clinicLink: aidooClinicLink, email: aidooEmail, password: aidooPassword }); } else { await invoke("reconnect_aidoo"); } setAidooPassword(""); await onRefresh(); onToast(t("aidooConnectedToast")); } catch (reason) { await onRefresh().catch(() => undefined); onToast(errorMessage(reason, language), "error"); } finally { setAidooBusy(false); } }}>{aidooBusy ? <LoaderCircle className="spin" /> : <Link2 />}{data.hasAidooPassword && !aidooPassword && !aidooIdentityChanged ? t("aidooReconnect") : t("aidooConnect")}</button>
+        {data.settings.aidooClinicUrl && <button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl(data.settings.aidooClinicUrl!); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("aidooOpenClinic")}</button>}
+        {data.hasAidooPassword && <button className="text-button danger" disabled={controlsDisabled} onClick={async () => { setAidooBusy(true); try { await invoke("disconnect_aidoo"); setAidooPassword(""); await onRefresh(); onToast(t("aidooDisconnectedToast")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setAidooBusy(false); } }}><Unplug />{t("aidooDisconnect")}</button>}
+      </div>
+      <SettingRow title={t("aidooBrowserSync")} detail={t("aidooBrowserSyncHelp")}><Toggle label={t("aidooBrowserSync")} checked={draft.aidooBrowserSyncEnabled} disabled={controlsDisabled} onChange={(aidooBrowserSyncEnabled) => setDraft({ ...draft, aidooBrowserSyncEnabled })} /></SettingRow>
     </SettingsSection>
     <SettingsSection icon={<Languages />} title={t("modelLanguage")}>
       <ModelPicker settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />
