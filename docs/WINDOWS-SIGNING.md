@@ -2,7 +2,7 @@
 
 Azure профилът `aidoo-whisper-lite` е създаден на 8 октомври 2026 г. в съществуващия Artifact Signing акаунт `aidooartifactsigning`, North Europe. Типът е Public Trust, издателят е `Aidoo LTD`. Профилът е активен. Това само по себе си не означава, че даден инсталатор е подписан.
 
-## Настроена връзка и оставащи стъпки
+## Настроена връзка
 
 На 8 октомври 2026 г. собственикът създаде отделната Microsoft Entra регистрация `aidoo-whisper-lite-github-signing`. Федеративната връзка с GitHub е създадена и регистрацията получи роля **Artifact Signing Certificate Profile Signer** само върху профила `aidoo-whisper-lite`. Правото е проверено върху точния ресурс на профила. Не са предоставени администраторски права или достъп до други Azure ресурси.
 
@@ -11,13 +11,13 @@ GitHub използва временна самоличност, без паро
 - Repository: `bkafelov-aidoo/AIDOO-Whisper-Lite`.
 - Environment: `windows-signing`.
 - Разрешен клон: `codex/whisper-lite-windows`.
-- Required reviewer: `bkafelov-aidoo`; ръчно одобрение преди всяко подписване. Преди първото изпълнение остава да се изключи администраторският bypass през GitHub интерфейса.
+- Required reviewer: `bkafelov-aidoo`; ръчно одобрение преди всяко подписване. Администраторският bypass е изключен и запазен през GitHub интерфейса на 8 октомври 2026 г.
 - Federated issuer: `https://token.actions.githubusercontent.com`.
 - Federated subject: `repo:bkafelov-aidoo@223467801/AIDOO-Whisper-Lite@1371171708:environment:windows-signing`. Репото използва неизменяеми GitHub идентификатори; проверено е чрез неговите OIDC настройки.
 - Audience: `api://AzureADTokenExchange`.
 - Само `AZURE_CLIENT_ID` и `AZURE_TENANT_ID` като защитени GitHub environment secrets; тези идентификатори не са пароли. Постоянен клиентски секрет не се създава.
 
-Собственикът одобри тази връзка и правото за подписване. Регистрацията в Microsoft Entra, включително приемането на [Microsoft identity platform Terms of Use](https://learn.microsoft.com/en-us/legal/microsoft-identity-platform/terms-of-use), е завършена от него. Подписан инсталатор все още не е издаден; първото изпълнение предстои след завършване на GitHub защитата и ръчно одобрение.
+Собственикът одобри тази връзка и правото за подписване. Регистрацията в Microsoft Entra, включително приемането на [Microsoft identity platform Terms of Use](https://learn.microsoft.com/en-us/legal/microsoft-identity-platform/terms-of-use), е завършена от него. Azure достъпът и GitHub защитата са настроени. Подписан инсталатор все още не е издаден; първото изпълнение предстои след ръчно одобрение.
 
 ## Издаване на подписан инсталатор
 
