@@ -12,7 +12,10 @@ $exe = Join-Path $installDir 'aidoo-whisper-lite.exe'
 if (!(Test-Path $exe)) { throw "The installed application is missing: $exe" }
 $notices = Join-Path $installDir 'THIRD_PARTY_NOTICES.txt'
 if (!(Test-Path $notices)) { throw 'The required third-party notices are missing.' }
-$app = Start-Process -FilePath $exe -PassThru
+$previousWebViewArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
+try { $app = Start-Process -FilePath $exe -PassThru }
+finally { $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $previousWebViewArguments }
 try {
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     do {
@@ -21,7 +24,8 @@ try {
         if ($app.HasExited) { throw "The installed application exited: $($app.ExitCode)" }
         if ([DateTime]::UtcNow -gt $deadline) { throw 'The installed main window did not appear.' }
     } while ($app.MainWindowTitle -ne 'AIDOO Whisper Lite')
-    Start-Sleep -Seconds 4
+    node (Join-Path $PSScriptRoot 'check-installed-windows-ui.mjs') $output
+    if ($LASTEXITCODE -ne 0) { throw 'The installed Windows interface failed its startup check.' }
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
