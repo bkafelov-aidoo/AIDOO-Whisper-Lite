@@ -31,6 +31,7 @@ try {
         ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $output 'native-input.json')
 } finally {
     if (Test-Path $result) { Copy-Item $result (Join-Path $output 'input-field.json') -Force }
-    if (!$fieldProcess.HasExited) { Stop-Process -Id $fieldProcess.Id -Force }
+    # The child can finish between the state check and cleanup; preserve the test error.
+    if (!$fieldProcess.HasExited) { Stop-Process -Id $fieldProcess.Id -Force -ErrorAction SilentlyContinue }
     Remove-Item $result, $ready -Force -ErrorAction SilentlyContinue
 }

@@ -46,7 +46,6 @@ $form.Add_Shown({
         # Windows 8+ requires this process to own keyboard focus before loading a layout.
         $layout = [InputDesktop]::LoadKeyboardLayout('00000402', 1)
         if ($layout -eq [IntPtr]::Zero) { throw 'Could not load the Bulgarian keyboard layout.' }
-        [System.Windows.Forms.InputLanguage]::CurrentInputLanguage = [System.Windows.Forms.InputLanguage]::FromHandle($layout)
         if ([System.Windows.Forms.InputLanguage]::CurrentInputLanguage.Culture.Name -ne 'bg-BG') {
             throw 'Could not activate the Bulgarian keyboard layout.'
         }
