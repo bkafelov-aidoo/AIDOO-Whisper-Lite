@@ -13,7 +13,7 @@ GitHub влиза с временна самоличност, без парол�
 - Разрешен клон: `codex/whisper-lite-windows`.
 - Required reviewer: `bkafelov-aidoo`; ръчно одобрение преди всяко подписване. Администраторският bypass е изключен.
 - Federated issuer: `https://token.actions.githubusercontent.com`.
-- Federated subject: `repo:bkafelov-aidoo/AIDOO-Whisper-Lite:environment:windows-signing`.
+- Federated subject: `repo:bkafelov-aidoo@223467801/AIDOO-Whisper-Lite@1371171708:environment:windows-signing`. Репото използва неизменяеми GitHub идентификатори; проверено е чрез неговите OIDC настройки.
 - Audience: `api://AzureADTokenExchange`.
 - Само `AZURE_CLIENT_ID` и `AZURE_TENANT_ID` като защитени GitHub environment secrets; тези идентификатори не са пароли. Постоянен клиентски секрет не се създава.
 
