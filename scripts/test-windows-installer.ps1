@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $output = Join-Path $PSScriptRoot '../release/windows-ci'
 New-Item -ItemType Directory -Force $output | Out-Null
+Copy-Item (Join-Path $PSScriptRoot '../docs/WINDOWS.md') (Join-Path $output 'WINDOWS-GUIDE.md')
 $installers = @(Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe')
 if ($installers.Count -ne 1) { throw 'Expected exactly one Windows installer.' }
 $installer = $installers[0]

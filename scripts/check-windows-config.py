@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-config = json.loads((ROOT / "src-tauri/tauri.windows.conf.json").read_text())
-package = json.loads((ROOT / "package.json").read_text())
+config = json.loads((ROOT / "src-tauri/tauri.windows.conf.json").read_text(encoding="utf-8"))
+package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 errors = []
 
 def require(condition, message):
@@ -28,7 +28,7 @@ for key, value in {"focus": False, "focusable": False, "alwaysOnTop": True, "vis
 require(config["build"]["beforeBuildCommand"] == "node scripts/build-windows-frontend.mjs", "Windows frontend build hook differs")
 require("x86_64-pc-windows-msvc" in package["scripts"]["bundle:windows"], "Native Windows target is missing")
 require("--locked" in package["scripts"]["bundle:windows"], "The installer must use the lockfile")
-workflow = (ROOT / ".github/workflows/ci-windows.yml").read_text()
+workflow = (ROOT / ".github/workflows/ci-windows.yml").read_text(encoding="utf-8")
 for guard in ["runs-on: windows-2022", "npm run bundle:windows", "cargo test --locked --release --target x86_64-pc-windows-msvc", "cargo clippy --locked --release --target x86_64-pc-windows-msvc", "scripts/test-windows-installer.ps1", "scripts/test-windows-input.ps1", "scripts/audit-windows-dependencies.py", "if-no-files-found: error"]:
     require(guard in workflow, f"Windows workflow guard is missing: {guard}")
 if errors:

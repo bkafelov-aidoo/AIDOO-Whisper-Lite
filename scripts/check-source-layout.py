@@ -17,7 +17,7 @@ def main() -> int:
             if not path.is_file() or path.suffix not in CODE_SUFFIXES:
                 continue
             checked += 1
-            line_count = len(path.read_text().splitlines())
+            line_count = len(path.read_text(encoding="utf-8").splitlines())
             if line_count > MAX_LINES:
                 oversized.append((path.relative_to(ROOT), line_count))
 

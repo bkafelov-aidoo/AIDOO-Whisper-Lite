@@ -21,9 +21,9 @@ EXPECTED_PRODUCT_ICON_SHA256 = (
 
 def main() -> int:
     errors: list[str] = []
-    package = json.loads((ROOT / "package.json").read_text())
-    tauri = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())
-    cargo_source = (ROOT / "src-tauri/Cargo.toml").read_text()
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    tauri = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+    cargo_source = (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8")
     cargo_version = re.search(r'^version\s*=\s*"([^"]+)"', cargo_source, re.MULTILINE)
     versions = {
         "package.json": package.get("version"),
@@ -33,7 +33,7 @@ def main() -> int:
     if None in versions.values() or len(set(versions.values())) != 1:
         errors.append(f"Release versions differ: {versions}")
 
-    toolchain = tomllib.loads((ROOT / "rust-toolchain.toml").read_text()).get(
+    toolchain = tomllib.loads((ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")).get(
         "toolchain", {}
     )
     expected_toolchain = {
@@ -126,10 +126,10 @@ def main() -> int:
             errors.append(f"Required entitlement is missing: {entitlement}")
 
     main_capabilities = json.loads(
-        (ROOT / "src-tauri/capabilities/main.json").read_text()
+        (ROOT / "src-tauri/capabilities/main.json").read_text(encoding="utf-8")
     )
     overlay_capabilities = json.loads(
-        (ROOT / "src-tauri/capabilities/overlay.json").read_text()
+        (ROOT / "src-tauri/capabilities/overlay.json").read_text(encoding="utf-8")
     )
     if main_capabilities.get("windows") != ["main"]:
         errors.append("Main capabilities must apply only to the main window")
@@ -171,7 +171,7 @@ def main() -> int:
             errors.append("The scoped URL opener must not define an unexpected deny list")
 
     frontend_source = "\n".join(
-        path.read_text() for path in (ROOT / "src").rglob("*.tsx")
+        path.read_text(encoding="utf-8") for path in (ROOT / "src").rglob("*.tsx")
     )
     expected_support_binding = 'const SUPPORT_EMAIL_URL = "mailto:support@aidoo.bg";'
     if frontend_source.count(expected_support_binding) != 1:
@@ -183,10 +183,10 @@ def main() -> int:
         "gpt-4o-mini-transcribe": "$0.003",
         "gpt-transcribe": "$0.0045",
     }
-    model_source = (ROOT / "src-tauri/src/models.rs").read_text()
-    type_source = (ROOT / "src/types.ts").read_text()
-    translation_source = (ROOT / "src/i18n.ts").read_text()
-    model_documentation = (ROOT / "docs/MODELS.md").read_text()
+    model_source = (ROOT / "src-tauri/src/models.rs").read_text(encoding="utf-8")
+    type_source = (ROOT / "src/types.ts").read_text(encoding="utf-8")
+    translation_source = (ROOT / "src/i18n.ts").read_text(encoding="utf-8")
+    model_documentation = (ROOT / "docs/MODELS.md").read_text(encoding="utf-8")
     rust_models = set(
         re.findall(
             r'^pub const (?:ECONOMY|ACCURACY)_MODEL: &str = "([^"]+)";$',
@@ -226,7 +226,7 @@ def main() -> int:
             )
 
     runtime_sources = "\n".join(
-        path.read_text() for path in (ROOT / "src-tauri/src").glob("*.rs")
+        path.read_text(encoding="utf-8") for path in (ROOT / "src-tauri/src").glob("*.rs")
     )
     runtime_https_urls = set(re.findall(r'"(https://[^"\s]+)"', runtime_sources))
     expected_runtime_https_urls = {
@@ -250,7 +250,7 @@ def main() -> int:
     if "tauri-plugin-updater" in cargo_source:
         errors.append("The native application must not include the Tauri updater plugin")
 
-    interface_styles = (ROOT / "src/styles.css").read_text()
+    interface_styles = (ROOT / "src/styles.css").read_text(encoding="utf-8")
     if 'font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text"' not in interface_styles:
         errors.append("The interface must use the macOS system font stack")
     if not re.search(r"body\s*\{[^}]*font-size:\s*13px", interface_styles):
@@ -318,7 +318,7 @@ def main() -> int:
             "Overlay permissions exceed the event-listen and set-size boundary"
         )
 
-    build_source = (ROOT / "src-tauri/build.rs").read_text()
+    build_source = (ROOT / "src-tauri/build.rs").read_text(encoding="utf-8")
     manifest_match = re.search(
         r"const COMMANDS:\s*&\[&str\]\s*=\s*&\[(.*?)\];",
         build_source,
@@ -330,7 +330,7 @@ def main() -> int:
         else set()
     )
     rust_source = "\n".join(
-        path.read_text() for path in (ROOT / "src-tauri/src").rglob("*.rs")
+        path.read_text(encoding="utf-8") for path in (ROOT / "src-tauri/src").rglob("*.rs")
     )
     for rust_safety_guard in (
         "#![deny(unsafe_op_in_unsafe_fn)]",
@@ -377,9 +377,9 @@ def main() -> int:
         errors.append("Application command permissions do not cover the exact manifest")
 
     workflow_path = ROOT / ".github/workflows/release-lite-macos.yml"
-    workflow = workflow_path.read_text()
+    workflow = workflow_path.read_text(encoding="utf-8")
     workflow_sources = {
-        path: path.read_text()
+        path: path.read_text(encoding="utf-8")
         for pattern in ("*.yml", "*.yaml")
         for path in (ROOT / ".github/workflows").glob(pattern)
     }
@@ -474,7 +474,7 @@ def main() -> int:
     ):
         if required_ci_guard not in ci_workflow:
             errors.append(f"Source CI guard is missing: {required_ci_guard}")
-    release_script = (ROOT / "scripts/release-mac.sh").read_text()
+    release_script = (ROOT / "scripts/release-mac.sh").read_text(encoding="utf-8")
     for required_release_command in (
         "cargo test --locked --release --target aarch64-apple-darwin",
         "cargo clippy --locked --release --target aarch64-apple-darwin",
@@ -515,7 +515,7 @@ def main() -> int:
     if not wizard_path.is_file():
         errors.append("GitHub release-secret wizard is missing")
     else:
-        wizard = wizard_path.read_text()
+        wizard = wizard_path.read_text(encoding="utf-8")
         wizard_secrets = set(
             re.findall(r"^set_secret\s+([A-Z0-9_]+)\s", wizard, re.MULTILINE)
         )
@@ -535,7 +535,7 @@ def main() -> int:
             errors.append(
                 "Release-secret wizard must reject any failed secret write"
             )
-    gitignore = (ROOT / ".gitignore").read_text().splitlines()
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     for private_key_pattern in ("*.p12", "*.p8"):
         if private_key_pattern not in gitignore:
             errors.append(f"Private key ignore rule is missing: {private_key_pattern}")

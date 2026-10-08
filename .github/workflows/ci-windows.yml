@@ -17,6 +17,8 @@ jobs:
   windows:
     runs-on: windows-2022
     timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,7 +35,7 @@ jobs:
       - name: Install locked Rust audit tool
         run: cargo install cargo-audit --version 0.22.2 --locked
       - run: npm ci
-      - run: npm audit --omit=dev
+      - run: npm audit
       - run: npm run check
       - run: python scripts/audit-windows-dependencies.py
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check

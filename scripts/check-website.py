@@ -129,7 +129,7 @@ def main() -> int:
             continue
         errors.extend(validate_page(page, phrases))
 
-    version = json.loads((ROOT / "package.json").read_text())["version"]
+    version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
     release_notes_path = WEBSITE / "release-notes.html"
     if release_notes_path.is_file():
         release_notes = release_notes_path.read_text(encoding="utf-8")

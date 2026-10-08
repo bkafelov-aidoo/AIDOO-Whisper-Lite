@@ -1,23 +1,29 @@
 # AIDOO Whisper Lite
 
-A focused macOS voice typing app. Hold a keyboard shortcut, speak, and release it to send the recording to the selected OpenAI transcription model. The result stays in the clipboard and can be pasted automatically into the active application.
+A focused voice typing app. This branch develops the Windows x64 version in a separate sibling checkout. Hold F8, speak, and release it to send the recording to the selected OpenAI transcription model. The result stays in the clipboard and can be pasted automatically into the active application. See [Windows setup and acceptance](docs/WINDOWS.md).
 
 ## Product behavior
 
 - Six-step Bulgarian/English onboarding for API key, permissions, shortcut, model, language and local storage.
-- OpenAI API key is verified and stored in macOS Keychain. The app never stores it in settings, logs or diagnostics.
-- Economy model: `gpt-4o-mini-transcribe` (about $0.003/minute).
-- Maximum accuracy: `gpt-transcribe` (about $0.0045/minute).
+- Each client supplies their own OpenAI API key. It is verified and stored in Windows Credential Manager (macOS Keychain on Mac). The app never stores it in settings, logs or diagnostics.
+- Economy model: `gpt-4o-mini-transcribe`.
+- Maximum accuracy: `gpt-transcribe`.
 - Automatic language detection or an explicit language to reduce latency.
 - Optional FLAC, TXT and 10-item local history, with independent controls.
 - Automatic paste with a clear clipboard fallback message.
 - A static AIDOO menu bar icon and a bottom-center recording/status overlay.
 - Failed audio survives restarts until the user retries or deletes it.
 - If OpenAI has already returned text, recovery finishes clipboard and local files without sending or charging the audio again.
-- New versions are distributed as notarized DMG downloads from the AIDOO website.
+- Windows test builds use a per-user NSIS `.exe` installer. The macOS product uses notarized DMG downloads.
 - No analytics. Diagnostics are created locally only when the user requests them.
 
 ## Requirements
+
+- Windows 10/11 x64 with WebView2 for the Windows version; the installer downloads the WebView2 bootstrapper when needed.
+- To build Windows: Node.js 22, Python 3.11+, Rust 1.93.1 with the `x86_64-pc-windows-msvc` target, Visual Studio C++ Build Tools and the Windows SDK.
+- An OpenAI Platform account with API billing enabled.
+
+Original macOS source requirements:
 
 - Apple Silicon Mac
 - macOS 13 or newer
@@ -25,6 +31,18 @@ A focused macOS voice typing app. Hold a keyboard shortcut, speak, and release i
 - An OpenAI Platform account with API billing enabled
 
 ## Development
+
+On Windows:
+
+```powershell
+npm ci
+npm run check
+npm run bundle:windows
+```
+
+The Windows CI also runs native unit tests, Clippy, a RustSec audit filtered to the shipped Windows dependency graph, disposable Credential Manager checks, a Bulgarian clipboard/paste test, an F8 keyboard-hook test, and installation/launch/uninstallation checks. These use synthetic data without an API request. Physical microphone and live-dictation acceptance is a separate checklist in `docs/WINDOWS.md`.
+
+Original macOS development:
 
 ```sh
 npm ci
@@ -71,4 +89,4 @@ The wizard verifies the exact Developer ID Application identity before writing e
 
 Use Settings → Diagnostics to create a local ZIP that excludes the API key, transcript content and audio. Review it before sharing, then email `support@aidoo.bg` and attach the ZIP only if you choose to. The app never uploads diagnostics automatically.
 
-The Windows implementation will be created as a separate sibling project after the Mac behavior is accepted, so its native shortcut, paste, storage, signing and installer code can follow Windows conventions.
+Windows private data is under `%LOCALAPPDATA%\AIDOO\Whisper Lite`, separately from the installed program. Dictation files default to `Documents\AIDOO Whisper Lite\Transcriptions`. The test installer is unsigned; client distribution needs Windows signing and physical Windows acceptance.
