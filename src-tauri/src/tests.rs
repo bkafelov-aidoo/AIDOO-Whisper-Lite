@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 fn history_entry() -> TranscriptEntry {
+    let output = std::env::temp_dir().join("aidoo-lite-history-fixture");
     TranscriptEntry {
         id: "entry".into(),
         text: "text".into(),
@@ -21,10 +22,16 @@ fn history_entry() -> TranscriptEntry {
         model: "gpt-4o-mini-transcribe".into(),
         language: "bg".into(),
         audio_path: Some(
-            "/Volumes/External/AIDOO/AIDOO-Whisper-2026-09-14_00-00-00-abcdef.flac".into(),
+            output
+                .join("AIDOO-Whisper-2026-09-14_00-00-00-abcdef.flac")
+                .to_string_lossy()
+                .into_owned(),
         ),
         text_path: Some(
-            "/Volumes/External/AIDOO/AIDOO-Whisper-2026-09-14_00-00-00-abcdef.txt".into(),
+            output
+                .join("AIDOO-Whisper-2026-09-14_00-00-00-abcdef.txt")
+                .to_string_lossy()
+                .into_owned(),
         ),
     }
 }
@@ -146,15 +153,17 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
 #[test]
 fn local_open_scope_accepts_only_history_files_and_diagnostic_bundles() {
     let history = [history_entry()];
-    let data = Path::new("/Users/example/Library/Application Support/AIDOO Whisper Lite");
+    let root = std::env::temp_dir().join("aidoo-lite-open-scope-fixture");
+    let data = root.join("private");
+    let data = data.as_path();
 
     assert!(path_is_authorized_for_open(
-        Path::new("/Volumes/External/AIDOO/AIDOO-Whisper-2026-09-14_00-00-00-abcdef.flac"),
+        Path::new(history[0].audio_path.as_deref().unwrap()),
         &history,
         data
     ));
     assert!(is_managed_output_path(
-        Path::new("/Volumes/External/AIDOO/AIDOO-Whisper-2026-09-14_00-00-00-abcdef123456.flac"),
+        &root.join("AIDOO-Whisper-2026-09-14_00-00-00-abcdef123456.flac"),
         "flac"
     ));
     assert!(path_is_authorized_for_open(
@@ -163,7 +172,7 @@ fn local_open_scope_accepts_only_history_files_and_diagnostic_bundles() {
         data
     ));
     assert!(!path_is_authorized_for_open(
-        Path::new("/Users/example/secret.txt"),
+        &root.join("secret.txt"),
         &history,
         data
     ));
@@ -174,22 +183,19 @@ fn local_open_scope_accepts_only_history_files_and_diagnostic_bundles() {
     ));
 
     let mut tampered = history_entry();
-    tampered.audio_path = Some("/Users/example/secret.flac".into());
-    assert!(!path_is_authorized_for_open(
-        Path::new("/Users/example/secret.flac"),
-        &[tampered],
-        data
-    ));
+    let secret = root.join("secret.flac");
+    tampered.audio_path = Some(secret.to_string_lossy().into_owned());
+    assert!(!path_is_authorized_for_open(&secret, &[tampered], data));
     assert!(!is_managed_output_path(
         Path::new("AIDOO-Whisper-relative.flac"),
         "flac"
     ));
     assert!(!is_managed_output_path(
-        Path::new("/Users/example/AIDOO-Whisper-secret.flac"),
+        &root.join("AIDOO-Whisper-secret.flac"),
         "flac"
     ));
     assert!(!is_managed_output_path(
-        Path::new("/Users/example/AIDOO-Whisper-2026-99-99_00-00-00-abcdef.flac"),
+        &root.join("AIDOO-Whisper-2026-99-99_00-00-00-abcdef.flac"),
         "flac"
     ));
     assert!(!is_managed_output_path(
