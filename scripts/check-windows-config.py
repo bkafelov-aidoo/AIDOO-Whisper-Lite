@@ -42,6 +42,14 @@ require("signCommand" not in config["bundle"]["windows"], "Unsigned CI must not 
 signed_command = package["scripts"].get("bundle:windows:signed", "")
 require("--config src-tauri/tauri.windows-signing.conf.json -- --locked" in signed_command, "Signing config must be a Tauri argument before Cargo arguments")
 signed_job = workflow.split("\n  signed-windows:\n", 1)[-1]
+require(package["scripts"].get("build:windows:check") ==
+    "tauri build --target x86_64-pc-windows-msvc --no-bundle --ci -- --locked",
+    "Prepare native Windows features and assets through Tauri without creating an installer")
+prepare_step = signed_job.find("npm run build:windows:check")
+test_step = signed_job.find("cargo test --locked --release --target x86_64-pc-windows-msvc")
+login_step = signed_job.find("Sign in to Azure")
+require(0 <= prepare_step < test_step < login_step,
+    "A fresh signing runner must prepare the Windows build before Cargo tests and Azure login")
 for guard in [
     "github.event_name == 'workflow_dispatch' && inputs.signed && github.ref == 'refs/heads/codex/whisper-lite-windows'",
     "environment: windows-signing", "id-token: write", "contents: read",
