@@ -28,4 +28,10 @@ $parameters = @{
 }
 Invoke-ArtifactSigning @parameters
 $verified = Assert-AidooWindowsSignature -Path $file.FullName
+$applicationPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../src-tauri/target/x86_64-pc-windows-msvc/release/aidoo-whisper-lite.exe'))
+if ($file.FullName -ieq $applicationPath) {
+    # Tauri restores its unsigned working binary after NSIS packaging.
+    # Keep the exact signed and patched payload that NSIS embeds for verification.
+    Save-AidooSignedApplication -Path $file.FullName -Directory (Join-Path $PSScriptRoot '../release/windows-ci') | Out-Null
+}
 Write-Host "Verified $($verified.file): $($verified.publisher), $($verified.status), timestamp present."

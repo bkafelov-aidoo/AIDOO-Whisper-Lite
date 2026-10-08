@@ -12,8 +12,7 @@ $installer = $installers[0]
 $signatureEvidence = [ordered]@{}
 if ($RequireSignature) {
     $signatureEvidence.installer = Assert-AidooWindowsSignature $installer.FullName
-    $compiledExe = 'src-tauri/target/x86_64-pc-windows-msvc/release/aidoo-whisper-lite.exe'
-    $signatureEvidence.compiledApplication = Assert-AidooWindowsSignature $compiledExe
+    $signatureEvidence.bundledApplication = Assert-AidooSignedApplicationSnapshot -Directory $output
 }
 $install = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
 if ($install.ExitCode -ne 0) { throw "Installer exit code: $($install.ExitCode)" }
@@ -22,8 +21,8 @@ $exe = Join-Path $installDir 'aidoo-whisper-lite.exe'
 if (!(Test-Path $exe)) { throw "The installed application is missing: $exe" }
 if ($RequireSignature) {
     $signatureEvidence.installedApplication = Assert-AidooWindowsSignature $exe
-    if ($signatureEvidence.installedApplication.sha256 -ne $signatureEvidence.compiledApplication.sha256) {
-        throw 'The installed application differs from the signed build output.'
+    if ($signatureEvidence.installedApplication.sha256 -ne $signatureEvidence.bundledApplication.sha256) {
+        throw 'The installed application differs from the signed bundle snapshot.'
     }
 }
 $notices = Join-Path $installDir 'THIRD_PARTY_NOTICES.txt'

@@ -17,7 +17,7 @@ GitHub използва временна самоличност, без паро
 - Audience: `api://AzureADTokenExchange`.
 - Само `AZURE_CLIENT_ID` и `AZURE_TENANT_ID` като защитени GitHub environment secrets; тези идентификатори не са пароли. Постоянен клиентски секрет не се създава.
 
-Собственикът одобри тази връзка и правото за подписване. Регистрацията в Microsoft Entra, включително приемането на [Microsoft identity platform Terms of Use](https://learn.microsoft.com/en-us/legal/microsoft-identity-platform/terms-of-use), е завършена от него. Azure достъпът и GitHub защитата са настроени. Подписан инсталатор все още не е издаден; първото изпълнение предстои след ръчно одобрение.
+Собственикът одобри тази връзка и правото за подписване. Регистрацията в Microsoft Entra, включително приемането на [Microsoft identity platform Terms of Use](https://learn.microsoft.com/en-us/legal/microsoft-identity-platform/terms-of-use), е завършена от него. Azure достъпът и GitHub защитата са настроени. Инсталатор за раздаване се издава само след успешно подписване и всички последващи проверки.
 
 ## Издаване на подписан инсталатор
 
@@ -28,7 +28,7 @@ GitHub използва временна самоличност, без паро
 
 Подписващото изпълнение компилира на чист Windows runner и не възстановява изпълними файлове от build cache. Преди Cargo тестовете Tauri подготвя Windows настройките и интерфейса с `--no-bundle`, без да създава инсталатор. Това предотвратява конфликт с macOS настройките при първа компилация. Проверките завършват преди входа в Azure. Официалният Microsoft модул `ArtifactSigning` 0.1.20 подписва през Tauri hook. Приложението се подписва преди опаковането; същият hook подписва NSIS помощните DLL файлове, деинсталатора и крайния инсталатор. Използват се SHA-256 и Microsoft RFC3161 timestamp.
 
-Проверката изисква валиден Authenticode подпис, издател `Aidoo LTD` и timestamp. Тя инсталира точния инсталатор, проверява подписи на инсталираното приложение и деинсталатора, сравнява инсталираното приложение с подписания build, стартира интерфейса и деинсталира със запазени потребителски данни. Артефакт с име **signed** се качва само ако всички стъпки са успешни. В него има `signature-verification.json`, `installer-verification.json` и SHA-256.
+Проверката изисква валиден Authenticode подпис, издател `Aidoo LTD` и timestamp. Подписващият hook запазва точното подписано приложение и неговия SHA-256 преди опаковането. Tauri 2.11.4 възстановява неподписаното работно копие след NSIS опаковането; то не се използва като доказателство за подписания файл. Проверката инсталира точния инсталатор, проверява подписи на инсталираното приложение и деинсталатора, сравнява инсталираното приложение със запазения подписан файл, стартира интерфейса и деинсталира със запазени потребителски данни. Артефакт с име **signed** се качва само ако всички стъпки са успешни. В него има подписаното приложение, `app-signature.json`, `signature-verification.json`, `installer-verification.json` и SHA-256.
 
 Обикновените push проверки продължават да създават неподписана тестова версия. Подписването не публикува GitHub release, не променя macOS версията и не приема реалната диктовка за проверена. Физическият тест с микрофон и личен OpenAI ключ остава необходим преди раздаване на клиенти.
 
@@ -40,3 +40,4 @@ GitHub използва временна самоличност, без паро
 - [Microsoft: OIDC за Artifact Signing в GitHub](https://github.com/Azure/artifact-signing-action/blob/main/docs/OIDC.md).
 - [Microsoft: ArtifactSigning 0.1.20](https://www.powershellgallery.com/packages/ArtifactSigning/0.1.20).
 - [Tauri: Windows signing hook](https://v2.tauri.app/distribute/sign/windows/).
+- [Tauri 2.11.4: възстановяване на работния файл след опаковане](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.11.4/crates/tauri-bundler/src/bundle.rs#L119-L188).
