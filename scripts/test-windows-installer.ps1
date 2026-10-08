@@ -1,16 +1,31 @@
+param([switch]$RequireSignature)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windows-signature.ps1')
 $output = Join-Path $PSScriptRoot '../release/windows-ci'
 New-Item -ItemType Directory -Force $output | Out-Null
 Copy-Item (Join-Path $PSScriptRoot '../docs/WINDOWS.md') (Join-Path $output 'WINDOWS-GUIDE.md')
+Copy-Item (Join-Path $PSScriptRoot '../docs/WINDOWS-SIGNING.md') (Join-Path $output 'WINDOWS-SIGNING.md')
 Copy-Item (Join-Path $PSScriptRoot '../docs/OPENAI-API-KEY-GUIDE.md') (Join-Path $output 'OPENAI-API-KEY-GUIDE.md')
 $installers = @(Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe')
 if ($installers.Count -ne 1) { throw 'Expected exactly one Windows installer.' }
 $installer = $installers[0]
+$signatureEvidence = [ordered]@{}
+if ($RequireSignature) {
+    $signatureEvidence.installer = Assert-AidooWindowsSignature $installer.FullName
+    $compiledExe = 'src-tauri/target/x86_64-pc-windows-msvc/release/aidoo-whisper-lite.exe'
+    $signatureEvidence.compiledApplication = Assert-AidooWindowsSignature $compiledExe
+}
 $install = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
 if ($install.ExitCode -ne 0) { throw "Installer exit code: $($install.ExitCode)" }
 $installDir = Join-Path $env:LOCALAPPDATA 'AIDOO Whisper Lite'
 $exe = Join-Path $installDir 'aidoo-whisper-lite.exe'
 if (!(Test-Path $exe)) { throw "The installed application is missing: $exe" }
+if ($RequireSignature) {
+    $signatureEvidence.installedApplication = Assert-AidooWindowsSignature $exe
+    if ($signatureEvidence.installedApplication.sha256 -ne $signatureEvidence.compiledApplication.sha256) {
+        throw 'The installed application differs from the signed build output.'
+    }
+}
 $notices = Join-Path $installDir 'THIRD_PARTY_NOTICES.txt'
 if (!(Test-Path $notices)) { throw 'The required third-party notices are missing.' }
 $previousWebViewArguments = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
@@ -52,6 +67,10 @@ $marker = Join-Path $dataDir 'ci-user-data-retention.txt'
 Set-Content -Encoding utf8 $marker 'disposable CI retention marker'
 $uninstaller = Join-Path $installDir 'uninstall.exe'
 if (!(Test-Path $uninstaller)) { throw 'The uninstaller is missing.' }
+if ($RequireSignature) {
+    $signatureEvidence.uninstaller = Assert-AidooWindowsSignature $uninstaller
+    $signatureEvidence | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $output 'signature-verification.json')
+}
 $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/S', "_?=$installDir") -Wait -PassThru
 if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exit code: $($uninstall.ExitCode)" }
 if (Test-Path $exe) { throw 'Uninstall left the application executable installed.' }

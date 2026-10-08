@@ -20,6 +20,7 @@
     "package:website": "python3 scripts/package-website-release.py",
     "verify:website": "python3 scripts/package-website-release.py --verify",
     "bundle:windows": "tauri build --target x86_64-pc-windows-msvc --bundles nsis --ci -- --locked",
+    "bundle:windows:signed": "tauri build --target x86_64-pc-windows-msvc --bundles nsis --ci --config src-tauri/tauri.windows-signing.conf.json -- --locked",
     "check:windows": "python3 scripts/check-windows-config.py"
   },
   "dependencies": {

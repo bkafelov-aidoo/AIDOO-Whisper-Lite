@@ -409,6 +409,7 @@ def main() -> int:
         "actions/cache/save@caa296126883cff596d87d8935842f9db880ef25",
         "dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87",
         "rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998",
+        "azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906",
     }
     actual_action_references = {
         f"{repository}@{reference}"
@@ -439,17 +440,18 @@ def main() -> int:
             errors.append(
                 f"{path.name} workflow permissions differ: {workflow_permissions}"
             )
-        if source.count("persist-credentials: false") != 1:
+        expected_build_jobs = 2 if path.name == "ci-windows.yml" else 1
+        if source.count("persist-credentials: false") != expected_build_jobs:
             errors.append(
-                f"{path.name} must disable persisted checkout credentials exactly once"
+                f"{path.name} must disable persisted checkout credentials in every build job"
             )
-        if source.count("toolchain: 1.93.1") != 1:
+        if source.count("toolchain: 1.93.1") != expected_build_jobs:
             errors.append(f"{path.name} must use the pinned Rust release toolchain")
         if source.count(
             "cargo install cargo-audit --version 0.22.2 --locked"
-        ) != 1:
+        ) != expected_build_jobs:
             errors.append(
-                f"{path.name} must install the locked Rust audit tool exactly once"
+                f"{path.name} must install the locked Rust audit tool in every build job"
             )
     for required_workflow_guard in (
         "runs-on: macos-15",

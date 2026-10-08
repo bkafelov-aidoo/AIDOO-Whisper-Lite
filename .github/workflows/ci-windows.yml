@@ -4,17 +4,23 @@ on:
   push:
     branches: [codex/whisper-lite-windows]
   workflow_dispatch:
+    inputs:
+      signed:
+        description: Sign with Aidoo LTD after approval in the windows-signing environment
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   checks: write
 
 concurrency:
-  group: aidoo-whisper-lite-windows-${{ github.ref }}
-  cancel-in-progress: true
+  group: aidoo-whisper-lite-windows-${{ github.ref }}-${{ inputs.signed && 'signed' || 'test' }}
+  cancel-in-progress: ${{ !inputs.signed }}
 
 jobs:
   windows:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.signed }}
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -50,6 +56,8 @@ jobs:
         run: npm run bundle:windows
       - name: Install, launch and uninstall the exact installer
         run: ./scripts/test-windows-installer.ps1
+      - name: Reject unsigned artifacts and other publishers
+        run: ./scripts/test-windows-signing-guard.ps1 -UnsignedArtifact src-tauri/target/x86_64-pc-windows-msvc/release/aidoo-whisper-lite.exe
       - run: cargo test --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Check native Windows credentials and input
@@ -65,6 +73,62 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: AIDOO-Whisper-Lite-Windows-x64-test
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            release/windows-ci/
+
+  signed-windows:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signed && github.ref == 'refs/heads/codex/whisper-lite-windows' }}
+    runs-on: windows-2022
+    timeout-minutes: 75
+    environment: windows-signing
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: 1.93.1
+          targets: x86_64-pc-windows-msvc
+          components: clippy,rustfmt
+      # Signing builds use a fresh runner without restoring executable build caches.
+      - name: Install locked Rust audit tool
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - run: npm ci
+      - run: npm audit
+      - run: npm run check
+      - run: python scripts/audit-windows-dependencies.py
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - run: ./scripts/test-windows-signing-guard.ps1
+      - run: cargo test --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
+      - run: cargo clippy --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: ./scripts/test-windows-input.ps1
+      - name: Sign in to Azure with a short-lived GitHub identity
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Install the official signing module
+        run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.20 -Scope CurrentUser -Force -Repository PSGallery
+      - name: Build and sign the app, uninstaller and installer
+        run: npm run bundle:windows:signed
+      - name: Verify signatures, install, launch and uninstall
+        run: ./scripts/test-windows-installer.ps1 -RequireSignature
+      - name: Upload the verified signed installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: AIDOO-Whisper-Lite-Windows-x64-signed
           if-no-files-found: error
           retention-days: 14
           path: |
