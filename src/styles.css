@@ -16,6 +16,10 @@
   --danger: #aa3048;
 }
 
+html[data-platform="windows"] { font-family: "Segoe UI Variable", "Segoe UI", sans-serif; }
+html[data-platform="windows"] .sidebar { padding-top: 24px; }
+html[data-platform="windows"] .page { padding-top: 28px; }
+
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; }
 body { overflow: hidden; background: var(--canvas); font-size: 13px; line-height: 1.35; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }

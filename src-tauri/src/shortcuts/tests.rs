@@ -9,7 +9,14 @@ fn default_shortcut_is_safe() {
     validate_settings(&settings()).unwrap();
     assert_eq!(
         settings().dictation_shortcut,
-        ShortcutBinding::key("alt_gr", &[])
+        ShortcutBinding::key(
+            if cfg!(target_os = "windows") {
+                "f8"
+            } else {
+                "alt_gr"
+            },
+            &[]
+        )
     );
 }
 

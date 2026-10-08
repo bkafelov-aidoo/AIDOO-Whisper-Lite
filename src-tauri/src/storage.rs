@@ -28,9 +28,14 @@ pub fn data_dir() -> PathBuf {
     if let Some(path) = TEST_DATA_DIR.with(|value| value.borrow().clone()) {
         return path;
     }
-    dirs::data_local_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("AIDOO Whisper Lite")
+    let root = dirs::data_local_dir().unwrap_or_else(std::env::temp_dir);
+    // Keep Windows user data outside the NSIS installation directory so
+    // removing or replacing the application cannot delete dictation history.
+    #[cfg(target_os = "windows")]
+    let directory = root.join("AIDOO").join("Whisper Lite");
+    #[cfg(not(target_os = "windows"))]
+    let directory = root.join("AIDOO Whisper Lite");
+    directory
 }
 
 #[cfg(test)]

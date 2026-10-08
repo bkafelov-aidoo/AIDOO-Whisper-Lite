@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "macOSPrivateApi": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "AIDOO Whisper Lite",
+        "width": 1040,
+        "height": 720,
+        "minWidth": 900,
+        "minHeight": 620,
+        "center": true,
+        "decorations": true
+      },
+      {
+        "label": "overlay",
+        "url": "index.html?window=overlay",
+        "title": "AIDOO Whisper Lite",
+        "width": 552,
+        "height": 156,
+        "minHeight": 132,
+        "maxHeight": 260,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "focus": false,
+        "focusable": false
+      }
+    ]
+  },
+  "build": {
+    "beforeBuildCommand": "node scripts/build-windows-frontend.mjs"
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "resources": {"../resources/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"},
+    "longDescription": "AIDOO Whisper Lite is a focused voice typing assistant for Windows.",
+    "windows": {
+      "webviewInstallMode": {"type": "downloadBootstrapper", "silent": true},
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Bulgarian", "English"],
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}

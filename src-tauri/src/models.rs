@@ -42,6 +42,14 @@ pub struct AppSettings {
     pub dictation_shortcut: ShortcutBinding,
 }
 
+fn default_dictation_shortcut() -> ShortcutBinding {
+    if cfg!(target_os = "windows") {
+        ShortcutBinding::key("f8", &[])
+    } else {
+        ShortcutBinding::key("alt_gr", &[])
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -57,7 +65,7 @@ impl Default for AppSettings {
             launch_at_login: false,
             microphone_name: None,
             automatic_microphone_fallback: true,
-            dictation_shortcut: ShortcutBinding::key("alt_gr", &[]),
+            dictation_shortcut: default_dictation_shortcut(),
         }
     }
 }

@@ -591,6 +591,8 @@ pub(super) fn request_app_quit(app: &AppHandle) {
 }
 
 fn refresh_application_menu(app: &AppHandle) {
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
     #[cfg(target_os = "macos")]
     {
         let operation_active = app

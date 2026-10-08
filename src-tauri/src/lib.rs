@@ -19,6 +19,8 @@ mod storage;
 mod tests;
 mod text_insertion;
 mod transcription;
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests;
 
 use chrono::{Local, Utc};
 use models::{
@@ -32,9 +34,9 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::menu::{
-    AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
-};
+#[cfg(target_os = "macos")]
+use tauri::menu::{AboutMetadata, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
+use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WindowEvent};
 use zeroize::Zeroizing;
@@ -43,6 +45,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 const KEYRING_SERVICE: &str = "app.aidoo.whisper-lite";
 const KEYRING_USER: &str = "openai-api-key";
 const TRAY_ID: &str = "aidoo-whisper-lite";
+#[cfg(target_os = "macos")]
 const APP_MENU_ID: &str = "aidoo-app-menu";
 const APP_QUIT_MENU_ID: &str = "aidoo-app-quit";
 const MAX_RECORDING_DURATION: std::time::Duration = std::time::Duration::from_secs(5 * 60);

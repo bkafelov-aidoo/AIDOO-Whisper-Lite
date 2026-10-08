@@ -95,9 +95,14 @@ pub(super) async fn save_api_key(
     let api_key = Zeroizing::new(api_key);
     let key = Zeroizing::new(api_key.trim().to_string());
     transcription::validate_api_key(&key).await?;
-    keyring_entry()?
-        .set_password(&key)
-        .map_err(|error| format!("Ключът не можа да бъде запазен в Keychain: {error}"))?;
+    keyring_entry()?.set_password(&key).map_err(|error| {
+        let store = if cfg!(target_os = "windows") {
+            "Windows Credential Manager"
+        } else {
+            "Keychain"
+        };
+        format!("Ключът не можа да бъде запазен в {store}: {error}")
+    })?;
     *state
         .api_key
         .lock()
@@ -445,6 +450,12 @@ pub(super) fn delete_history_item(
 
 #[tauri::command]
 pub(super) fn open_accessibility_settings() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        tauri_plugin_opener::open_url("ms-settings:privacy-microphone", None::<&str>).map_err(
+            |error| format!("Настройките на микрофона не можаха да бъдат отворени: {error}"),
+        )?;
+    }
     #[cfg(target_os = "macos")]
     {
         let status = std::process::Command::new("open")

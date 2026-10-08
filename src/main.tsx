@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import Overlay from "./Overlay";
 import "./styles.css";
+import { isWindows } from "./lib/platform";
+document.documentElement.dataset.platform = isWindows ? "windows" : "macos";
 
 const isOverlay = new URLSearchParams(window.location.search).get("window") === "overlay";
 document.documentElement.dataset.window = isOverlay ? "overlay" : "main";

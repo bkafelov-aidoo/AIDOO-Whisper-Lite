@@ -1,0 +1,57 @@
+name: Build and test AIDOO Whisper Lite for Windows
+
+on:
+  push:
+    branches: [codex/whisper-lite-windows]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: aidoo-whisper-lite-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: 1.93.1
+          targets: x86_64-pc-windows-msvc
+          components: clippy,rustfmt
+      - name: Install locked Rust audit tool
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - run: npm ci
+      - run: npm audit --omit=dev
+      - run: npm run check
+      - run: python scripts/audit-windows-dependencies.py
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Build the test installer
+        run: npm run bundle:windows
+      - run: cargo test --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
+      - run: cargo clippy --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Check native Windows credentials and input
+        run: ./scripts/test-windows-input.ps1
+      - name: Install, launch and uninstall the exact installer
+        run: ./scripts/test-windows-installer.ps1
+      - name: Upload the installer and verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: AIDOO-Whisper-Lite-Windows-x64-test
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            release/windows-ci/

@@ -1,6 +1,7 @@
 import { progressLabel, translator } from "../i18n";
 import { type AppLanguage, type BootstrapState, type ShortcutBinding } from "../types";
 import { type StatusTone } from "../ui-types";
+import { isWindows } from "./platform";
 
 export function appIsReady(data: BootstrapState) {
   return data.settings.onboardingComplete
@@ -26,8 +27,10 @@ export function appStatus(data: BootstrapState, language: AppLanguage): { tone: 
     : { tone: "attention", label: t("notReady") };
 }
 export function formatShortcut(binding: ShortcutBinding) {
-  if (binding.code === "alt_gr") return "⌥ Right";
-  const names: Record<string, string> = { meta: "⌘", shift: "⇧", alt: "⌥", control: "⌃", fn: "fn" };
+  if (binding.code === "alt_gr") return isWindows ? "Right Alt" : "⌥ Right";
+  const names: Record<string, string> = isWindows
+    ? { meta: "Win", shift: "Shift", alt: "Alt", control: "Ctrl", fn: "Fn" }
+    : { meta: "⌘", shift: "⇧", alt: "⌥", control: "⌃", fn: "fn" };
   const code = binding.code.replace("key_", "").replace("num_", "").replace(/_/g, " ").toUpperCase();
   return [...binding.modifiers.map((item) => names[item] ?? item), code].join(" ");
 }

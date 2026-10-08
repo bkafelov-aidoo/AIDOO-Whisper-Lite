@@ -36,12 +36,18 @@ pub fn paste() -> Result<(), String> {
         enigo
             .key(modifier, Direction::Press)
             .map_err(|e| e.to_string())?;
-        enigo
-            .key(Key::Unicode('v'), Direction::Click)
-            .map_err(|e| e.to_string())?;
-        enigo
+        // Windows VK_V denotes the physical shortcut key even with a Bulgarian
+        // layout. Unicode('v') would type a character rather than invoke Paste.
+        #[cfg(target_os = "windows")]
+        let paste_key = Key::Other(0x56);
+        #[cfg(not(target_os = "windows"))]
+        let paste_key = Key::Unicode('v');
+        let pasted = enigo.key(paste_key, Direction::Click);
+        let released = enigo
             .key(modifier, Direction::Release)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string());
+        pasted.map_err(|e| e.to_string())?;
+        released?;
         Ok(())
     }
 }
