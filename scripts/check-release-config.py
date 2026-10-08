@@ -8,6 +8,7 @@ import json
 import os
 import plistlib
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -523,7 +524,15 @@ def main() -> int:
             errors.append(
                 f"Release-secret wizard outputs differ: {sorted(wizard_secrets)}"
             )
-        if wizard_path.stat().st_mode & 0o111 == 0:
+        if os.name == "nt":
+            git_mode = subprocess.run(
+                ["git", "ls-files", "-s", "--", str(wizard_path.relative_to(ROOT))],
+                cwd=ROOT, capture_output=True, text=True, check=True,
+            ).stdout
+            executable = git_mode.startswith("100755 ")
+        else:
+            executable = wizard_path.stat().st_mode & 0o111 != 0
+        if not executable:
             errors.append("GitHub release-secret wizard is not executable")
         for forbidden_release_action in ("gh workflow run", "git tag", "git push"):
             if forbidden_release_action in wizard:

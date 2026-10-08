@@ -47,6 +47,18 @@ fn right_option_matches_as_a_dedicated_physical_key() {
 }
 
 #[test]
+#[cfg(target_os = "windows")]
+fn releasing_one_physical_modifier_keeps_the_other_held() {
+    let mut state = ModifierState::default();
+    state.update("control_left", true);
+    state.update("control_right", true);
+    state.update("control_left", false);
+    assert!(state.names_for("f8").contains("control"));
+    state.update("control_right", false);
+    assert!(state.names_for("f8").is_empty());
+}
+
+#[test]
 #[cfg(target_os = "macos")]
 fn macos_listener_uses_accessibility_event_tap() {
     // Listen-only taps request the separate Input Monitoring TCC service and can silently

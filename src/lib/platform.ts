@@ -1,4 +1,5 @@
-export const isWindows = import.meta.env.VITE_APP_PLATFORM === "windows";
+export const isWindows = import.meta.env.VITE_APP_PLATFORM === "windows"
+  || (typeof navigator !== "undefined" && /Windows NT/.test(navigator.userAgent));
 
 export function credentialHelp(language: "bg" | "en") {
   if (!isWindows) return null;

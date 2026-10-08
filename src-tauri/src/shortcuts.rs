@@ -66,10 +66,32 @@ struct ModifierState {
     meta: bool,
     shift: bool,
     alt: bool,
+    #[cfg(target_os = "windows")]
+    physical_modifiers: BTreeSet<String>,
 }
 
 impl ModifierState {
     fn update(&mut self, code: &str, pressed: bool) {
+        #[cfg(target_os = "windows")]
+        {
+            if !is_modifier_code(code) {
+                return;
+            }
+            if pressed {
+                self.physical_modifiers.insert(code.to_string());
+            } else {
+                self.physical_modifiers.remove(code);
+            }
+            self.control = self.physical_modifiers.contains("control_left")
+                || self.physical_modifiers.contains("control_right");
+            self.meta = self.physical_modifiers.contains("meta_left")
+                || self.physical_modifiers.contains("meta_right");
+            self.shift = self.physical_modifiers.contains("shift_left")
+                || self.physical_modifiers.contains("shift_right");
+            self.alt = self.physical_modifiers.contains("alt")
+                || self.physical_modifiers.contains("alt_gr");
+        }
+        #[cfg(not(target_os = "windows"))]
         match code {
             "function" => self.function = pressed,
             "control_left" | "control_right" => self.control = pressed,
@@ -234,9 +256,13 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
         }
         return;
     }
-    let InputEvent::Key { code, pressed } = event else {
+    #[cfg(target_os = "macos")]
+    let InputEvent::Key { code, pressed } = event
+    else {
         return;
     };
+    #[cfg(not(target_os = "macos"))]
+    let InputEvent::Key { code, pressed } = event;
     if code == "alt_gr" {
         crate::storage::append_shortcut_diagnostic(if pressed {
             "right-option down received"
