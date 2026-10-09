@@ -60,6 +60,8 @@ jobs:
         run: ./scripts/test-windows-signing-guard.ps1 -UnsignedArtifact src-tauri/target/x86_64-pc-windows-msvc/release/aidoo-whisper-lite.exe
       - name: Check the packaged signature verification sequence
         run: pwsh -NoProfile -NonInteractive -File ./scripts/test-windows-bundled-signature.ps1
+      - name: Check temporary NSIS uninstaller signing
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/test-windows-signing-hook.ps1
       - run: cargo test --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Check native Windows credentials and input
@@ -114,6 +116,8 @@ jobs:
       - run: ./scripts/test-windows-signing-guard.ps1
       - name: Check the packaged signature verification sequence
         run: pwsh -NoProfile -NonInteractive -File ./scripts/test-windows-bundled-signature.ps1
+      - name: Check temporary NSIS uninstaller signing
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/test-windows-signing-hook.ps1
       - name: Prepare Windows features and build without creating an installer
         run: npm run build:windows:check
       - run: cargo test --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml

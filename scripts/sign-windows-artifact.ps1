@@ -2,7 +2,6 @@ param([Parameter(Mandatory, Position = 0)][string]$Path)
 $ErrorActionPreference = 'Stop'
 if (!$IsWindows) { throw 'Artifact Signing must run on Windows.' }
 $file = Get-Item -LiteralPath $Path
-if ($file.Extension -notin @('.exe', '.dll')) { throw 'Expected a Windows EXE or DLL.' }
 . (Join-Path $PSScriptRoot 'windows-signature.ps1')
 Import-Module ArtifactSigning -RequiredVersion 0.1.20 -ErrorAction Stop
 # Use only the Azure CLI session created by azure/login with GitHub OIDC.
@@ -26,8 +25,11 @@ $parameters = @{
     ExcludeAzureDeveloperCliCredential = $true
     ExcludeInteractiveBrowserCredential = $true
 }
-Invoke-ArtifactSigning @parameters
-$verified = Assert-AidooWindowsSignature -Path $file.FullName
+$verified = Invoke-AidooWindowsArtifactSigning -Path $file.FullName -Sign {
+    param($SigningPath)
+    $parameters.Files = $SigningPath
+    Invoke-ArtifactSigning @parameters
+}
 $applicationPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../src-tauri/target/x86_64-pc-windows-msvc/release/aidoo-whisper-lite.exe'))
 if ($file.FullName -ieq $applicationPath) {
     # Tauri restores its unsigned working binary after NSIS packaging.

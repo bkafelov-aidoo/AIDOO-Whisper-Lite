@@ -57,13 +57,14 @@ for guard in [
     "ArtifactSigning -RequiredVersion 0.1.20", "npm run bundle:windows:signed",
     "scripts/test-windows-installer.ps1 -RequireSignature",
     "scripts/test-windows-bundled-signature.ps1",
+    "scripts/test-windows-signing-hook.ps1",
     "AIDOO-Whisper-Lite-Windows-x64-signed",
 ]:
     require(guard in signed_job, f"Signed Windows workflow guard is missing: {guard}")
 for forbidden in ["actions/cache", "cache: npm", "AZURE_CLIENT_SECRET", "AZURE_PASSWORD", "if: always()", "--no-sign", "continue-on-error"]:
     require(forbidden not in signed_job, f"Signed Windows job must not use {forbidden}")
 sign_script = (ROOT / "scripts/sign-windows-artifact.ps1").read_text(encoding="utf-8")
-for guard in ["https://neu.codesigning.azure.net/", "aidooartifactsigning", "aidoo-whisper-lite", "ExcludeAzureCliCredential = $false", "ExcludeInteractiveBrowserCredential = $true", "FileDigest = 'SHA256'", "TimestampDigest = 'SHA256'", "Assert-AidooWindowsSignature", "Save-AidooSignedApplication"]:
+for guard in ["https://neu.codesigning.azure.net/", "aidooartifactsigning", "aidoo-whisper-lite", "ExcludeAzureCliCredential = $false", "ExcludeInteractiveBrowserCredential = $true", "FileDigest = 'SHA256'", "TimestampDigest = 'SHA256'", "Invoke-AidooWindowsArtifactSigning", "Save-AidooSignedApplication"]:
     require(guard in sign_script, f"Windows signing script guard is missing: {guard}")
 installer_check = (ROOT / "scripts/test-windows-installer.ps1").read_text(encoding="utf-8")
 require("Assert-AidooSignedApplicationSnapshot" in installer_check,
