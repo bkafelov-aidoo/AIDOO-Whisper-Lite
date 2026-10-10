@@ -5,11 +5,13 @@ mod app_ui;
 mod audio;
 mod commands;
 mod dictation;
+mod overlay_window;
 mod recovery;
 
 use app_ui::*;
 use commands::*;
 use dictation::*;
+use overlay_window::*;
 use recovery::*;
 
 mod models;
@@ -36,7 +38,7 @@ use tauri::menu::{
     AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
 };
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use zeroize::Zeroizing;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
@@ -224,6 +226,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .manage(AppState::load())
+        .manage(overlay_window::OverlayWindowState::load())
         .menu(build_application_menu)
         .on_menu_event(|app, event| {
             if event.id.as_ref() == APP_QUIT_MENU_ID {
@@ -231,6 +234,11 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
+            if window.label() == "overlay" {
+                if let WindowEvent::Moved(position) = event {
+                    overlay_window::remember_move(window, *position);
+                }
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
@@ -273,12 +281,14 @@ pub fn run() {
             open_accessibility_settings,
             refresh_accessibility_status,
             reposition_overlay,
+            start_overlay_drag,
             open_local_path,
             create_diagnostic_bundle
         ])
         .build(tauri::generate_context!())
         .expect("error while building AIDOO Whisper Lite");
     app.run(|app, event| match event {
+        tauri::RunEvent::Exit => overlay_window::flush_position(app),
         tauri::RunEvent::ExitRequested { api, .. }
             if app
                 .state::<AppState>()

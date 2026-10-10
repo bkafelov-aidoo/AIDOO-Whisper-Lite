@@ -583,10 +583,11 @@ fn overlay_stays_visible_until_dictation_is_ready_again() {
 }
 
 #[test]
-fn overlay_accepts_clicks_only_while_its_stop_button_is_actionable() {
-    assert!(overlay_accepts_pointer_input("starting"));
-    assert!(overlay_accepts_pointer_input("recording"));
-    for state in ["idle", "transcribing", "done", "error"] {
+fn overlay_remains_draggable_in_every_visible_state() {
+    for state in ["starting", "recording", "transcribing", "done", "error"] {
+        assert!(overlay_accepts_pointer_input(state), "{state}");
+    }
+    for state in ["idle", "unknown"] {
         assert!(!overlay_accepts_pointer_input(state), "{state}");
     }
 }

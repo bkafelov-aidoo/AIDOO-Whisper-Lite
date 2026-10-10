@@ -19,6 +19,7 @@ fn main() {
         "open_accessibility_settings",
         "refresh_accessibility_status",
         "reposition_overlay",
+        "start_overlay_drag",
         "open_local_path",
         "create_diagnostic_bundle",
     ];

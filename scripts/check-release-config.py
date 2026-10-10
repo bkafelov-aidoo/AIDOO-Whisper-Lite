@@ -311,11 +311,12 @@ def main() -> int:
         "allow-current-recording-snapshot",
         "allow-stop-and-transcribe",
         "allow-reposition-overlay",
+        "allow-start-overlay-drag",
     }
     overlay_permissions = set(overlay_capabilities.get("permissions", []))
     if overlay_permissions != expected_overlay_permissions:
         errors.append(
-            "Overlay permissions exceed the event-listen and set-size boundary"
+            "Overlay permissions differ from the exact status, stop, resize and drag boundary"
         )
 
     build_source = (ROOT / "src-tauri/build.rs").read_text()

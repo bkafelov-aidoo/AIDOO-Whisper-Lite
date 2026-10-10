@@ -255,6 +255,10 @@ body[data-window="overlay"] { overflow: hidden; }
 .overlay-state-icon.error { background: linear-gradient(145deg,#d94b63,#aa2942); }
 .overlay-state-icon.done { background: linear-gradient(145deg,#36ad7a,#1c7653); }
 .overlay-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.overlay-card { cursor: grab; user-select: none; -webkit-user-select: none; }
+.overlay-card:active { cursor: grabbing; }
+.overlay-heading { display: flex; align-items: center; gap: 8px; }
+.overlay-drag-grip { width: 14px; height: 18px; flex: 0 0 auto; color: currentColor; opacity: .65; }
 .overlay-copy strong { font-size: 14px; font-weight: 650; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
 .overlay-copy span { color: #3c4e60; font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
 .overlay-copy .error-text { color: #8e263c; }

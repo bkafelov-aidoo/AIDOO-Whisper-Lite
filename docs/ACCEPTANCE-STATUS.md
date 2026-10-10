@@ -52,6 +52,19 @@ Status date: 15 September 2026
 - A diagnostics package created by the installed build uses `0600`, contains only `diagnostics.log`, redacted `settings.json` and `system.txt`, and contains no OpenAI key, known transcription text or user home path.
 - Earlier interactive checks also covered settings, local persistence, recovery after a failed transcription, clipboard copy and the close/reopen lifecycle.
 
+## Candidate — movable recording overlay, 2026-10-10
+
+The user approved top-right placement, dragging and persistent position on 2026-10-10. This is a source candidate based on `8f255310601e76882641d53840e84877174d640a`, developed on `codex/lite-movable-recording-overlay`; it is not an installed-app acceptance or a promoted working baseline.
+
+- With no saved position, the overlay opens at the top right of the cursor's active screen, inside its usable area. Drag the card to choose another position; Stop remains a separate action. Every visible state accepts dragging while the native window remains non-focusable.
+- The user position is stored as logical offsets in private `overlay-position.json`, independently of dictation settings. Native move events from automatic positioning do not replace it. Writes are coalesced while dragging, and quitting flushes the last move immediately.
+- Status, progress and height changes retain the visible window's screen and position, including manually chosen points at the screen edge. A position is clamped only when needed to keep the window inside the usable area. A new recording or app restart restores the saved position on the active display, accounting for DPI and clamping for a smaller display.
+- Automated evidence: all 60 Rust tests pass, including nine placement/persistence tests and the visible-state pointer policy. Strict Clippy, TypeScript, source-layout, localization, release-configuration, macOS-dependency, website, production frontend build and diff checks pass. The full tests require loopback access for the existing local HTTP failure-contract test.
+- Visual/interaction evidence: a local browser preview loaded the actual production frontend with simulated native IPC. Recording, starting, transcribing, done and error copy rendered; dragging was requested from the card in recording/done, and Stop requested transcription without requesting a drag. The rendered error card had `scrollWidth == clientWidth == 504`. This verifies the frontend, not actual macOS window dragging, keyboard-focus retention or physical dictation. The design detector reported two pre-existing width-transition warnings in unchanged progress-bar styles; this scoped change preserves those animations.
+- The existing signed/notarized ARM DMG remains unchanged at `release/1.0.5/AIDOO Whisper Lite_1.0.5_aarch64.dmg`, SHA-256 `d260dbb408d2385ec09d4913c6d2d833a0c87b77829c8bacf32e9063579e38c6`. It does not contain this candidate. No new installer or installed application replacement was performed.
+
+Installed acceptance after a separately requested test installer: confirm initial top-right placement; drag during recording/processing; verify that Stop works without moving the window and that the destination app keeps keyboard focus; confirm status changes preserve position; quit immediately after dragging and restart; check a second monitor/DPI and a smaller work area. Only an explicit user statement that this exact candidate works promotes it.
+
 ## Required before public launch
 
 - Complete the first-run and critical dictation path from [ACCEPTANCE.md](ACCEPTANCE.md) on a second Apple Silicon Mac or a clean macOS account, including Bulgarian/English system-language behavior and fresh Microphone/Accessibility permission prompts.

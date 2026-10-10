@@ -115,6 +115,20 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     write_json_atomic(&settings_path(), settings)
 }
 
+pub(crate) fn load_overlay_position() -> Option<crate::overlay_window::SavedPosition> {
+    read_json::<crate::overlay_window::SavedPosition>(
+        &data_dir().join("overlay-position.json"),
+        4096,
+    )
+    .filter(|position| position.valid())
+}
+
+pub(crate) fn save_overlay_position(
+    position: &crate::overlay_window::SavedPosition,
+) -> Result<(), String> {
+    write_json_atomic(&data_dir().join("overlay-position.json"), position)
+}
+
 pub fn load_history() -> Vec<TranscriptEntry> {
     let mut history: Vec<TranscriptEntry> =
         read_json(&history_path(), MAX_HISTORY_JSON_BYTES).unwrap_or_default();
