@@ -389,3 +389,78 @@ fn accepted_successor_is_used_in_the_actual_upload() {
     });
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[tokio::test]
+async fn every_file_model_uses_its_own_parameters_without_streaming_or_retries() {
+    let models = crate::model_updates::bundled_models();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!(
+        "http://{}/audio/transcriptions",
+        listener.local_addr().unwrap()
+    );
+    let count = models.len();
+    let server = std::thread::spawn(move || {
+        let mut requests = vec![];
+        for _ in 0..count {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            requests.push(String::from_utf8(read_request(&mut socket)).unwrap());
+            let body = r#"{"text":"result"}"#;
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        }
+        requests
+    });
+    let path = temporary_audio();
+    let client = local_client(Duration::from_secs(3));
+    for model in &models {
+        let settings = AppSettings {
+            model: model.id.clone(),
+            model_details: Some(model.clone()),
+            vocabulary_terms: vec!["кофердам".into(), "Brinker".into()],
+            ..AppSettings::default()
+        };
+        assert_eq!(
+            transcribe_with_client(&path, "sk-test-only", &settings, None, &client, &endpoint)
+                .await
+                .unwrap(),
+            "result"
+        );
+    }
+    let requests = server.join().unwrap();
+    for (model, request) in models.iter().zip(requests) {
+        assert!(request.contains(&format!("name=\"model\"\r\n\r\n{}", model.id)));
+        assert!(!request.contains("name=\"stream\""));
+        assert_eq!(
+            request.contains("name=\"languages[]\""),
+            model.protocol == "gpt-transcribe-v1"
+        );
+        assert_eq!(
+            request.contains("name=\"language\""),
+            model.protocol != "gpt-transcribe-v1"
+        );
+        assert_eq!(
+            request.contains("name=\"keywords[]\""),
+            model.protocol == "gpt-transcribe-v1"
+        );
+        assert_eq!(
+            request.contains("name=\"prompt\""),
+            ["legacy-transcribe-v1", "whisper-v1"].contains(&model.protocol.as_str())
+        );
+        assert_eq!(
+            request.contains("name=\"chunking_strategy\"\r\n\r\nauto"),
+            model.protocol == "diarize-v1"
+        );
+        assert_eq!(
+            request.contains("name=\"response_format\"\r\n\r\ndiarized_json"),
+            model.protocol == "diarize-v1"
+        );
+    }
+    std::fs::remove_file(path).unwrap();
+}

@@ -198,10 +198,11 @@ def main() -> int:
     typed_models = set(
         re.findall(r'"(gpt-[a-z0-9.-]*transcribe[a-z0-9.-]*)"', type_source.split("export interface TranscriptEntry")[0])
     )
-    if frontend_models:
-        errors.append("Model selection controls must not be present in the frontend")
+    catalog = json.loads((ROOT / "catalog/transcription-models.json").read_text())
+    if catalog["schemaVersion"] != 2 or len(catalog["models"]) < 5:
+        errors.append("The model selector requires the audited multi-model catalog")
     if typed_models or "model: string;" not in type_source:
-        errors.append("Frontend must use the native-approved model ID without a model picker")
+        errors.append("Frontend must use the native-approved model ID with native catalog validation")
     expected_model_ids = set(expected_transcription_models)
     for source_name, actual_models in (
         ("native model constants", rust_models),
@@ -230,6 +231,7 @@ def main() -> int:
     runtime_https_urls = set(re.findall(r'"(https://[^"\s]+)"', runtime_sources))
     # The formatted official model-page URL is evidence metadata, never fetched.
     runtime_https_urls.discard("https://developers.openai.com/api/docs/models/{}")
+    runtime_https_urls.discard("https://developers.openai.com/api/docs/models/{base}")
     expected_runtime_https_urls = {
         "https://api.openai.com/v1/models",
         "https://api.openai.com/v1/audio/transcriptions",
@@ -280,8 +282,8 @@ def main() -> int:
         "autostart:default",
         "allow-bootstrap",
         "allow-update-settings",
-        "allow-check-model-update",
-        "allow-accept-model-update",
+        "allow-get-model-catalog",
+        "allow-check-api-key",
         "allow-save-api-key",
         "allow-delete-api-key",
         "allow-begin-shortcut-capture",

@@ -25,10 +25,11 @@ export function VocabularyEditor({ settings, language, disabled, onChange }: {
   onChange: (settings: AppSettings) => void;
 }) {
   const t = translator(language);
+  const unsupported = settings.modelDetails?.protocol === "diarize-v1";
   const issue = vocabularyIssue(settings.vocabularyTerms);
   return <SettingsSection icon={<BookOpen />} title={t("vocabularyTitle")}>
-    <SettingRow title={t("vocabularyEnabled")} detail={t("vocabularyHelp")}>
-      <Toggle label={t("vocabularyEnabled")} checked={settings.vocabularyEnabled} disabled={disabled} onChange={(vocabularyEnabled) => onChange({ ...settings, vocabularyEnabled })} />
+    <SettingRow title={t("vocabularyEnabled")} detail={t(unsupported ? "vocabularyDiarizeHelp" : "vocabularyHelp")}>
+      <Toggle label={t("vocabularyEnabled")} checked={settings.vocabularyEnabled && !unsupported} disabled={disabled || unsupported} onChange={(vocabularyEnabled) => onChange({ ...settings, vocabularyEnabled })} />
     </SettingRow>
     <div className="vocabulary-editor">
       <label htmlFor="dictation-vocabulary">{t("vocabularyWords")}</label>

@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 pub const TRANSCRIPTION_MODEL: &str = "gpt-transcribe";
-const SUPPORTED_LANGUAGES: &[&str] = &["auto", "bg", "en", "de", "es", "fr", "it"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -30,6 +29,8 @@ pub struct AppSettings {
     pub ui_language: String,
     pub language: String,
     pub model: String,
+    #[serde(default)]
+    pub model_details: Option<crate::model_updates::CatalogModel>,
     pub vocabulary_enabled: bool,
     pub vocabulary_terms: Vec<String>,
     pub auto_paste: bool,
@@ -50,6 +51,7 @@ impl Default for AppSettings {
             ui_language: "auto".into(),
             language: "bg".into(),
             model: TRANSCRIPTION_MODEL.into(),
+            model_details: Some(crate::model_updates::default_model()),
             vocabulary_enabled: true,
             vocabulary_terms: Vec::new(),
             auto_paste: true,
@@ -68,8 +70,16 @@ impl Default for AppSettings {
 impl AppSettings {
     pub fn normalize(&mut self) {
         self.vocabulary_terms = crate::vocabulary::normalize(&self.vocabulary_terms);
-        self.model = TRANSCRIPTION_MODEL.into();
-        if !SUPPORTED_LANGUAGES.contains(&self.language.as_str()) {
+        self.model_details = self
+            .model_details
+            .take()
+            .filter(|m| m.id == self.model && m.valid())
+            .or_else(|| crate::model_updates::bundled_model(&self.model));
+        if self.model_details.is_none() {
+            self.model = TRANSCRIPTION_MODEL.into();
+            self.model_details = Some(crate::model_updates::default_model());
+        }
+        if !crate::model_updates::language_supported(&self.language) {
             self.language = "auto".into();
         }
         if !matches!(self.ui_language.as_str(), "auto" | "bg" | "en") {
@@ -103,7 +113,14 @@ mod tests {
             }))
             .unwrap();
             settings.normalize();
-            assert_eq!(settings.model, TRANSCRIPTION_MODEL);
+            assert_eq!(
+                settings.model,
+                if old_model == "unknown-model" {
+                    TRANSCRIPTION_MODEL
+                } else {
+                    old_model
+                }
+            );
             assert_eq!(settings.language, "en");
             assert!(!settings.auto_paste);
             assert_eq!(settings.vocabulary_terms, vec!["Brinker"]);
@@ -173,6 +190,8 @@ pub struct TranscriptEntry {
     pub language: String,
     pub audio_path: Option<String>,
     pub text_path: Option<String>,
+    #[serde(default)]
+    pub cost: Option<crate::transcription_cost::TranscriptionCost>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +205,8 @@ pub struct FailedRecording {
     pub retryable: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_text: Option<String>,
+    #[serde(default)]
+    pub transcription_model: Option<crate::model_updates::CatalogModel>,
 }
 
 fn default_true() -> bool {
@@ -227,6 +248,7 @@ pub struct BootstrapState {
     pub failed_recording: Option<FailedRecording>,
     pub microphones: Vec<String>,
     pub has_api_key: bool,
+    pub api_key_status: crate::api_key_status::ApiKeyStatus,
     pub accessibility_granted: bool,
     pub app_version: String,
     pub default_output_directory: String,

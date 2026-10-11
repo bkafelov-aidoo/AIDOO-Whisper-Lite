@@ -12,8 +12,8 @@ import { Dashboard } from "./pages/Dashboard";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Onboarding } from "./components/Onboarding";
-import { ModelUpdateDialog } from "./components/ModelUpdateDialog";
-import { useModelUpdate } from "./hooks/useModelUpdate";
+import { useModelCatalog } from "./hooks/useModelCatalog";
+import type { ApiKeyStatus } from "./types";
 import { DeleteDialog } from "./components/DeleteDialog";
 import type { ToastTone } from "./ui-types";
 
@@ -65,6 +65,7 @@ export default function App() {
         return { ...current, history: [payload.entry, ...current.history.filter((item) => item.id !== payload.entry!.id)].slice(0, 10) };
       });
     });
+    events.listen<ApiKeyStatus>("api-key:status", ({ payload }) => setData((current) => current ? { ...current, apiKeyStatus: payload } : current));
     events.listen<string>("toast", ({ payload }) => showToast(errorMessage(payload, languageRef.current), "warning"));
     events.listen<FailedRecording | null>("failed-recording:changed", ({ payload }) => {
       setData((current) => current ? { ...current, failedRecording: payload } : current);
@@ -88,7 +89,7 @@ export default function App() {
     return () => window.removeEventListener("focus", refreshOnFocus);
   }, [refresh]);
 
-  const modelUpdate = useModelUpdate(data?.hasApiKey ?? false, (settings) => setData((current) => current ? { ...current, settings } : current));
+  const modelCatalog = useModelCatalog(data?.hasApiKey ?? false, data?.apiKeyStatus?.checkedAt);
 
   const language = resolveLanguage(data?.settings.uiLanguage ?? "auto");
   languageRef.current = language;
@@ -195,6 +196,8 @@ export default function App() {
         {page === "settings" && (
           <SettingsPage
             data={data}
+            models={modelCatalog.models}
+            modelLoading={modelCatalog.loading}
             language={language}
             isBusy={isBusy}
             onSave={async (settings) => {
@@ -260,11 +263,7 @@ export default function App() {
         />
       )}
 
-      {modelUpdate.proposal && !isBusy && !showOnboarding && !deleteTarget && data.settings.model !== modelUpdate.proposal.candidate.id && (
-        <ModelUpdateDialog proposal={modelUpdate.proposal} language={language} saving={modelUpdate.saving}
-          onLater={modelUpdate.dismiss}
-          onAccept={() => { void modelUpdate.accept().then((changed) => { if (changed) showToast(t("modelUpdated")); }).catch(() => showToast(t("modelUpdateFailed"), "error")); }} />
-      )}
+
 
       {toast && <div className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"} aria-live={toast.tone === "error" ? "assertive" : "polite"}>{toast.tone === "success" ? <Check /> : <AlertCircle />}{toast.message}</div>}
     </div>

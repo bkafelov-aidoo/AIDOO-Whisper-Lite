@@ -19,6 +19,7 @@ fn history_entry() -> TranscriptEntry {
         created_at: "2026-09-14T00:00:00Z".into(),
         duration_seconds: 1.0,
         model: crate::models::TRANSCRIPTION_MODEL.into(),
+        cost: None,
         language: "bg".into(),
         audio_path: Some(
             "/Volumes/External/AIDOO/AIDOO-Whisper-2026-09-14_00-00-00-abcdef.flac".into(),
@@ -37,6 +38,7 @@ fn recovery_recording(path: &Path, retryable: bool) -> FailedRecording {
         error: "network".into(),
         retryable,
         completed_text: None,
+        transcription_model: None,
     }
 }
 
@@ -118,7 +120,9 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
             uuid::Uuid::new_v4()
         ));
         std::fs::write(&source, b"fLaC charged audio").unwrap();
-        let failed_recording = Mutex::new(Some(recovery_recording(&source, false)));
+        let mut paid = recovery_recording(&source, false);
+        paid.transcription_model = crate::model_updates::bundled_model("gpt-4o-mini-transcribe");
+        let failed_recording = Mutex::new(Some(paid));
 
         preserve_completed_recovery_with(
             &failed_recording,
@@ -138,6 +142,18 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
             Some("already paid text")
         );
         assert!(!persisted.retryable);
+        let restored =
+            crate::recovery::completed_recovery_settings(AppSettings::default(), &persisted);
+        assert_eq!(restored.model, "gpt-4o-mini-transcribe");
+        let cost =
+            crate::transcription_cost::estimate(restored.model_details.as_ref(), 30.0).unwrap();
+        assert!((cost.estimated_usd - 0.0015).abs() < 1e-12);
+        let legacy = crate::recovery::completed_recovery_settings(
+            AppSettings::default(),
+            &recovery_recording(&source, false),
+        );
+        assert_eq!(legacy.model, "unknown");
+        assert!(crate::transcription_cost::estimate(legacy.model_details.as_ref(), 30.0).is_none());
     });
 
     std::fs::remove_dir_all(root).unwrap();
@@ -648,4 +664,26 @@ fn tray_errors_follow_the_selected_interface_language() {
         localized_native_error("Не беше разпозната реч.", false),
         "Не беше разпозната реч."
     );
+}
+
+#[test]
+fn history_cost_survives_restart_and_legacy_history_has_no_invented_cost() {
+    let root =
+        std::env::temp_dir().join(format!("aidoo-lite-history-cost-{}", uuid::Uuid::new_v4()));
+    crate::storage::with_test_data_dir(root.clone(), || {
+        crate::storage::ensure_directories().unwrap();
+        let mut entry = history_entry();
+        let mut legacy_json = serde_json::to_value(&entry).unwrap();
+        legacy_json.as_object_mut().unwrap().remove("cost");
+        let legacy: TranscriptEntry = serde_json::from_value(legacy_json).unwrap();
+        assert!(legacy.cost.is_none());
+        entry.cost =
+            crate::transcription_cost::estimate(Some(&crate::model_updates::default_model()), 30.0);
+        crate::storage::save_history(&[entry, legacy]).unwrap();
+        let loaded = crate::storage::load_history();
+        assert_eq!(loaded[0].cost.as_ref().unwrap().usd_per_minute, 0.0045);
+        assert!((loaded[0].cost.as_ref().unwrap().estimated_usd - 0.00225).abs() < 1e-12);
+        assert!(loaded[1].cost.is_none());
+    });
+    std::fs::remove_dir_all(root).unwrap();
 }

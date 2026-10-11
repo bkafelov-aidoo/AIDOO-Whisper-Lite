@@ -305,13 +305,14 @@ async fn stop_and_transcribe_inner(app: &AppHandle) -> Result<TranscriptionCompl
     };
     // Persist a fail-safe Recovery item before the request can reach OpenAI. If the process
     // exits at any point after this, startup must assume that the request may have been charged.
-    let pending = retain_failed_recording(
+    let mut pending = retain_failed_recording(
         &staged,
         captured.duration_seconds,
         IN_FLIGHT_RECOVERY_ERROR,
         false,
         None,
     )?;
+    pending.transcription_model = settings.model_details.clone();
     let request_audio = PathBuf::from(&pending.path);
     store_failed_recording(app, &state, pending)?;
     let _ = std::fs::remove_file(&captured.path);
@@ -320,7 +321,7 @@ async fn stop_and_transcribe_inner(app: &AppHandle) -> Result<TranscriptionCompl
         set_progress(&app_for_progress, percent.max(10), stage, determinate);
     });
     let result =
-        transcription::transcribe(&request_audio, &api_key, &settings, Some(callback)).await;
+        transcription::transcribe(app, &request_audio, &api_key, &settings, Some(callback)).await;
     match result {
         Ok(text) => {
             set_progress(app, 100, "finishing_locally", true);

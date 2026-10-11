@@ -1,100 +1,101 @@
 use super::*;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-
-fn successor() -> CatalogModel {
-    let mut model = default_model();
-    model.id = "gpt-test-transcribe".into();
-    model.source = format!("https://developers.openai.com/api/docs/models/{}", model.id);
-    model.rank = 2;
-    model
-}
-fn catalog_bytes(model: &CatalogModel) -> Vec<u8> {
-    serde_json::to_vec(&serde_json::json!({"schemaVersion": 1, "models": [default_model(), model]}))
-        .unwrap()
-}
-
 #[test]
-fn bundled_catalog_is_valid_and_has_no_upgrade() {
-    let catalog =
-        parse_catalog(include_bytes!("../../../catalog/transcription-models.json")).unwrap();
-    assert!(choose_candidate(&catalog, &default_model(), "bg").is_none());
-    assert!(default_model().valid());
+fn bundled_models_cover_all_completed_file_protocols() {
+    let models = bundled_models();
+    assert_eq!(models.len(), 7);
+    for id in [
+        "gpt-transcribe",
+        "gpt-4o-transcribe",
+        "gpt-4o-mini-transcribe",
+        "gpt-4o-transcribe-diarize",
+        "whisper-1",
+    ] {
+        assert!(models
+            .iter()
+            .any(|m| m.id == id && m.valid() && m.languages.contains(&"bg".into())));
+    }
+    assert!(language_supported("ja"));
+    assert!(language_supported("ar"));
+    assert!(!language_supported("xyz"));
 }
-
 #[test]
-fn only_compatible_curated_successors_are_offered() {
-    let mut newer = successor();
-    let catalog = parse_catalog(&catalog_bytes(&newer)).unwrap();
-    assert_eq!(
-        choose_candidate(&catalog, &default_model(), "bg")
-            .unwrap()
-            .id,
-        newer.id
-    );
-    assert!(choose_candidate(&catalog, &newer, "bg").is_none());
-    newer.languages = vec!["en".into()];
-    let catalog = parse_catalog(&catalog_bytes(&newer)).unwrap();
-    assert!(choose_candidate(&catalog, &default_model(), "bg").is_none());
-    newer.protocol = "unknown-upload-format".into();
-    assert!(parse_catalog(&catalog_bytes(&newer)).is_err());
-}
-
-#[test]
-fn malformed_or_ambiguous_catalogs_fail_closed() {
+fn malformed_catalogs_and_protocol_id_mismatches_fail_closed() {
     assert!(parse_catalog(&vec![b' '; CATALOG_LIMIT + 1]).is_err());
-    assert!(parse_catalog(br#"{"schemaVersion":2,"models":[]}"#).is_err());
-    assert!(parse_catalog(&catalog_bytes(&default_model())).is_err());
-    let mut newer = successor();
-    newer.source = "https://untrusted.example/model".into();
-    assert!(parse_catalog(&catalog_bytes(&newer)).is_err());
-    newer = successor();
-    newer.estimated_usd_per_minute = -1.0;
-    assert!(parse_catalog(&catalog_bytes(&newer)).is_err());
+    assert!(parse_catalog(br#"{"schemaVersion":99,"models":[]}"#).is_err());
+    let mut model = default_model();
+    model.protocol = "legacy-transcribe-v1".into();
+    assert!(!model.valid());
+    model = default_model();
+    model.estimated_usd_per_minute = -1.0;
+    assert!(!model.valid());
+    model = default_model();
+    model.source = "https://untrusted.example/model".into();
+    assert!(!model.valid());
+    let duplicates = serde_json::to_vec(
+        &serde_json::json!({"schemaVersion":2,"models":[default_model(),default_model()]}),
+    )
+    .unwrap();
+    assert!(parse_catalog(&duplicates).is_err());
 }
-
 #[test]
-fn consent_binds_exact_proposal_and_survives_restart_without_changing_preferences() {
-    let directory = std::env::temp_dir().join(format!("lite-model-test-{}", uuid::Uuid::new_v4()));
-    crate::storage::with_test_data_dir(directory.clone(), || {
-        let settings = AppSettings {
-            language: "en".into(),
-            vocabulary_terms: vec!["Brinker".into()],
+fn selecting_model_persists_exact_rate_and_preserves_other_preferences() {
+    let root = std::env::temp_dir().join(format!("lite-selector-{}", uuid::Uuid::new_v4()));
+    crate::storage::with_test_data_dir(root.clone(), || {
+        let state = ModelUpdateState::default();
+        let mut settings = AppSettings {
+            language: "ja".into(),
             auto_paste: false,
+            vocabulary_terms: vec!["Brinker".into()],
             ..AppSettings::default()
         };
+        let model = resolve_selection(&state, "whisper-1", "ja", &settings).unwrap();
+        settings.model = model.id.clone();
+        settings.model_details = Some(model);
+        settings.normalize();
         crate::storage::save_settings(&settings).unwrap();
-        let proposal = ModelProposal {
-            key_revision: 0,
-            current_model: settings.model.clone(),
-            current_usd_per_minute: 0.0045,
-            candidate: successor(),
-        };
-        assert_eq!(approved_model_id(), TRANSCRIPTION_MODEL); // Discovery alone has no effect.
-        assert!(accepted_choice(&proposal, "gpt-unapproved-transcribe", &settings, 0).is_err());
-        let mut stale = settings.clone();
-        stale.model = "other-model".into();
-        assert!(accepted_choice(&proposal, &proposal.candidate.id, &stale, 0).is_err());
-        assert!(accepted_choice(&proposal, &proposal.candidate.id, &settings, 1).is_err());
-        let choice = accepted_choice(&proposal, &proposal.candidate.id, &settings, 0).unwrap();
-        crate::storage::save_model_choice(&choice).unwrap();
-        let restarted = crate::storage::load_settings();
-        assert_eq!(restarted.model, choice.id);
-        assert_eq!(restarted.language, "en");
-        assert_eq!(restarted.vocabulary_terms, vec!["Brinker"]);
-        assert!(!restarted.auto_paste);
-        std::fs::write(directory.join("model-choice.json"), b"invalid").unwrap();
+        let saved = crate::storage::load_settings();
+        assert_eq!(saved.model, "whisper-1");
+        assert_eq!(saved.model_details.unwrap().estimated_usd_per_minute, 0.006);
+        assert_eq!(saved.language, "ja");
+        assert!(!saved.auto_paste);
+        assert_eq!(saved.vocabulary_terms, vec!["Brinker"]);
+        assert!(resolve_selection(&state, "unapproved-model", "bg", &settings).is_err());
+        assert!(resolve_selection(&state, "whisper-1", "yue", &settings).is_err());
+        *state.catalog.lock().unwrap() = vec![ModelOption {
+            model: default_model(),
+            available: Some(false),
+            is_new: false,
+        }];
+        assert!(resolve_selection(&state, "gpt-transcribe", "bg", &settings).is_err());
+    });
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn old_approved_choice_migrates_but_never_overrides_new_selection() {
+    let root = std::env::temp_dir().join(format!("lite-migration-{}", uuid::Uuid::new_v4()));
+    crate::storage::with_test_data_dir(root.clone(), || {
+        crate::storage::save_model_choice(&bundled_model("whisper-1").unwrap()).unwrap();
+        assert_eq!(crate::storage::load_settings().model, "whisper-1");
+        let settings = AppSettings::default();
+        crate::storage::save_settings(&settings).unwrap();
         assert_eq!(crate::storage::load_settings().model, TRANSCRIPTION_MODEL);
     });
-    std::fs::remove_dir_all(directory).unwrap();
+    std::fs::remove_dir_all(root).unwrap();
 }
-
-// Local mock only: never transcribes audio, never uses a real API credential.
-async fn discovery_case(status: u16, model_list: &str) -> (Option<ModelProposal>, Vec<String>) {
+async fn discovery_case(
+    status: u16,
+    model_list: &str,
+) -> (CatalogReport, &'static str, Vec<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let root = format!("http://{}", listener.local_addr().unwrap());
-    let catalog = String::from_utf8(catalog_bytes(&successor())).unwrap();
-    let replies = [(200, catalog), (status, model_list.to_owned())];
+    let mut newer = default_model();
+    newer.id = "gpt-test-transcribe".into();
+    newer.source = format!("https://developers.openai.com/api/docs/models/{}", newer.id);
+    let body =
+        serde_json::to_string(&serde_json::json!({"schemaVersion":2,"models":[newer]})).unwrap();
+    let replies = [(200, body), (status, model_list.to_owned())];
     let server = std::thread::spawn(move || {
         let mut requests = vec![];
         for (status, body) in replies {
@@ -102,7 +103,7 @@ async fn discovery_case(status: u16, model_list: &str) -> (Option<ModelProposal>
             socket
                 .set_read_timeout(Some(Duration::from_secs(3)))
                 .unwrap();
-            let mut request = Vec::new();
+            let mut request = vec![];
             while !request.ends_with(b"\r\n\r\n") {
                 let mut byte = [0];
                 socket.read_exact(&mut byte).unwrap();
@@ -123,53 +124,78 @@ async fn discovery_case(status: u16, model_list: &str) -> (Option<ModelProposal>
         .timeout(Duration::from_secs(3))
         .build()
         .unwrap();
-    let state = ModelUpdateState::default();
-    let current = default_model();
-    let catalog_url = format!("{root}/catalog");
-    let models_url = format!("{root}/models");
-    let first = check_once(
-        &state,
-        discover(
-            &client,
-            &catalog_url,
-            &models_url,
-            "sk-test-only",
-            &current,
-            "bg",
-        ),
-    );
-    let second = check_once(
-        &state,
-        discover(
-            &client,
-            &catalog_url,
-            &models_url,
-            "sk-test-only",
-            &current,
-            "bg",
-        ),
-    );
-    let (result, repeated) = tokio::join!(first, second);
-    assert_eq!(
-        result.as_ref().map(|p| &p.candidate.id),
-        repeated.as_ref().map(|p| &p.candidate.id)
-    );
-    (result, server.join().unwrap())
+    let (report, health) = discover(
+        &client,
+        &format!("{root}/catalog"),
+        &format!("{root}/models"),
+        "sk-test-only",
+    )
+    .await;
+    (report, health, server.join().unwrap())
 }
-
 #[tokio::test]
-async fn candidate_requires_account_availability_and_github_receives_no_key() {
-    let (proposal, requests) =
-        discovery_case(200, r#"{"data":[{"id":"gpt-test-transcribe"}]}"#).await;
-    assert_eq!(proposal.unwrap().candidate.id, "gpt-test-transcribe");
+async fn availability_is_account_specific_and_github_never_receives_the_key() {
+    let (report, health, requests) = discovery_case(
+        200,
+        r#"{"data":[{"id":"gpt-test-transcribe"},{"id":"whisper-1"}]}"#,
+    )
+    .await;
+    assert_eq!(health, "verified");
+    assert_eq!(report.models.len(), 8);
+    let newer = report
+        .models
+        .iter()
+        .find(|m| m.model.id == "gpt-test-transcribe")
+        .unwrap();
+    assert_eq!(newer.available, Some(true));
+    assert!(newer.is_new);
     assert!(!requests[0].to_lowercase().contains("authorization"));
     assert!(!requests[0].contains("sk-test-only"));
     assert!(requests[1].contains("Bearer sk-test-only"));
-    for (status, body) in [
-        (200, r#"{"data":[]}"#),
-        (403, "permission denied"),
-        (200, "invalid JSON"),
-    ] {
-        assert!(discovery_case(status, body).await.0.is_none());
-    }
+    let (report, health, _) = discovery_case(403, "restricted").await;
+    assert_eq!(health, "restricted");
+    assert!(report.models.iter().all(|m| m.available.is_none()));
+    let (_, health, _) = discovery_case(401, "revoked").await;
+    assert_eq!(health, "invalid");
+    let (_, health, _) = discovery_case(200, "invalid JSON").await;
+    assert_eq!(health, "unavailable");
+}
+
+#[tokio::test]
+async fn concurrent_startup_checks_share_one_discovery_and_key_changes_discard_old_results() {
+    let state = ModelUpdateState::default();
+    let calls = std::sync::atomic::AtomicUsize::new(0);
+    let fetch = || async {
+        calls.fetch_add(1, Ordering::AcqRel);
+        tokio::task::yield_now().await;
+        (
+            CatalogReport {
+                models: vec![],
+                catalog_updated: true,
+            },
+            "verified",
+        )
+    };
+    let (a, b) = tokio::join!(
+        cached_discover(&state, 0, fetch()),
+        cached_discover(&state, 0, fetch())
+    );
+    assert!(a.is_some() && b.is_some());
+    assert_eq!(calls.load(Ordering::Acquire), 1);
+    invalidate_key(&state);
+    let stale = cached_discover(&state, 1, async {
+        invalidate_key(&state);
+        (
+            CatalogReport {
+                models: vec![],
+                catalog_updated: true,
+            },
+            "invalid",
+        )
+    })
+    .await;
+    assert!(stale.is_none());
+    let fresh = cached_discover(&state, 2, fetch()).await.unwrap();
+    assert_eq!(fresh.1, Some("verified"));
+    assert_eq!(calls.load(Ordering::Acquire), 2);
 }

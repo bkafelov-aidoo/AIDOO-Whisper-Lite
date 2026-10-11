@@ -40,3 +40,7 @@ export function formatDate(value: string, language: AppLanguage) {
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(language === "bg" ? "bg-BG" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
+
+export function formatUsd(amount: number, language: AppLanguage) {
+  return new Intl.NumberFormat(language === "bg" ? "bg-BG" : "en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 6 }).format(amount);
+}

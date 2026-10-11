@@ -1,7 +1,6 @@
 use crate::models::AppSettings;
 use futures_util::{StreamExt, TryStreamExt};
-use reqwest::multipart::{Form, Part};
-use serde::Deserialize;
+use reqwest::multipart::Part;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -40,6 +39,7 @@ const FILE_TOO_LARGE_PREFIX: &str = "Аудио файлът е по-голям 
 pub struct TranscriptionFailure {
     pub message: String,
     pub retryable: bool,
+    pub http_status: Option<u16>,
 }
 
 impl TranscriptionFailure {
@@ -47,17 +47,17 @@ impl TranscriptionFailure {
         Self {
             retryable: !message.starts_with(FILE_TOO_LARGE_PREFIX),
             message,
+            http_status: None,
         }
     }
 
     fn after_request(message: String, retryable: bool) -> Self {
-        Self { message, retryable }
+        Self {
+            message,
+            retryable,
+            http_status: None,
+        }
     }
-}
-
-#[derive(Deserialize)]
-struct TranscriptionResponse {
-    text: String,
 }
 
 pub fn encode_wav_to_flac(input: &Path, output: &Path) -> Result<(), String> {
@@ -196,13 +196,14 @@ pub async fn validate_api_key(api_key: &str) -> Result<(), String> {
 }
 
 pub async fn transcribe(
+    app: &tauri::AppHandle,
     path: &Path,
     api_key: &str,
     settings: &AppSettings,
     progress: Option<ProgressCallback>,
 ) -> Result<String, TranscriptionFailure> {
     let client = transcription_client()?;
-    transcribe_with_client(
+    let result = transcribe_with_client(
         path,
         api_key,
         settings,
@@ -210,7 +211,16 @@ pub async fn transcribe(
         client,
         "https://api.openai.com/v1/audio/transcriptions",
     )
-    .await
+    .await;
+    let phase = match &result {
+        Ok(_) => "working",
+        Err(error) => error
+            .http_status
+            .map(crate::api_key_status::phase_for_status)
+            .unwrap_or("unavailable"),
+    };
+    crate::api_key_status::record(app, phase);
+    result
 }
 
 async fn transcribe_with_client(
@@ -224,20 +234,17 @@ async fn transcribe_with_client(
     let audio = streamed_audio_part(path, progress.clone())
         .await
         .map_err(TranscriptionFailure::before_request)?;
-    let mut form = Form::new()
-        .part("file", audio)
-        .text("model", settings.model.clone())
-        .text("response_format", "json");
-    if settings.language != "auto" {
-        form = form.text("languages[]", settings.language.clone());
-    }
-    if settings.vocabulary_enabled {
-        let terms = crate::vocabulary::normalize(&settings.vocabulary_terms);
-        crate::vocabulary::validate(&terms).map_err(TranscriptionFailure::before_request)?;
-        for term in terms {
-            form = form.text("keywords[]", term);
-        }
-    }
+    let model = settings
+        .model_details
+        .as_ref()
+        .filter(|m| m.id == settings.model && m.valid())
+        .cloned()
+        .or_else(|| crate::model_updates::bundled_model(&settings.model))
+        .ok_or_else(|| {
+            TranscriptionFailure::before_request("Неподдържан модел. / Unsupported model.".into())
+        })?;
+    let form = crate::transcription_protocol::form(audio, &model, settings)
+        .map_err(TranscriptionFailure::before_request)?;
     let response = client
         .post(endpoint)
         .bearer_auth(api_key)
@@ -250,10 +257,13 @@ async fn transcribe_with_client(
         })?;
     if !response.status().is_success() {
         let retryable = response_status_is_retry_safe(response.status());
-        return Err(TranscriptionFailure::after_request(
+        let status = response.status().as_u16();
+        let mut error = TranscriptionFailure::after_request(
             api_error(response, "Транскрипцията не успя").await,
             retryable,
-        ));
+        );
+        error.http_status = Some(status);
+        return Err(error);
     }
     let body = read_response_body(response, MAX_TRANSCRIPTION_RESPONSE_BYTES)
         .await
@@ -263,13 +273,8 @@ async fn transcribe_with_client(
                 false,
             )
         })?;
-    let result: TranscriptionResponse = serde_json::from_slice(&body).map_err(|error| {
-        TranscriptionFailure::after_request(
-            format!("OpenAI върна невалиден отговор: {error}"),
-            false,
-        )
-    })?;
-    let text = result.text.trim().to_string();
+    let text = crate::transcription_protocol::final_text(&body, &model.protocol)
+        .map_err(|e| TranscriptionFailure::after_request(e, false))?;
     if text.is_empty() {
         return Err(TranscriptionFailure::after_request(
             "Не беше разпозната реч.".into(),

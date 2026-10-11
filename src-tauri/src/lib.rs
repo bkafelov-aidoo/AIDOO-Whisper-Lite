@@ -14,6 +14,7 @@ use dictation::*;
 use overlay_window::*;
 use recovery::*;
 
+mod api_key_status;
 mod model_updates;
 mod models;
 mod shortcuts;
@@ -22,6 +23,8 @@ mod storage;
 mod tests;
 mod text_insertion;
 mod transcription;
+mod transcription_cost;
+mod transcription_protocol;
 mod vocabulary;
 
 use chrono::{Local, Utc};
@@ -73,6 +76,7 @@ fn recovery_plan(failed: &FailedRecording) -> Result<RecoveryPlan, String> {
 struct AppState {
     settings: Mutex<AppSettings>,
     model_updates: model_updates::ModelUpdateState,
+    api_key_status: Mutex<api_key_status::ApiKeyStatus>,
     history: Mutex<Vec<TranscriptEntry>>,
     failed_recording: Mutex<Option<FailedRecording>>,
     recorder: audio::RecorderService,
@@ -105,6 +109,7 @@ impl AppState {
         Self {
             settings: Mutex::new(storage::load_settings()),
             model_updates: model_updates::ModelUpdateState::default(),
+            api_key_status: Mutex::new(api_key_status::ApiKeyStatus::default()),
             history: Mutex::new(history),
             failed_recording: Mutex::new(failed_recording),
             recorder: audio::RecorderService::new(),
@@ -269,8 +274,8 @@ pub fn run() {
             bootstrap,
             overlay_bootstrap,
             update_settings,
-            check_model_update,
-            accept_model_update,
+            get_model_catalog,
+            check_api_key,
             save_api_key,
             delete_api_key,
             begin_shortcut_capture,

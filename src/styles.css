@@ -323,10 +323,34 @@ body[data-window="overlay"] { overflow: hidden; }
   .api-row { grid-template-columns: 1fr; }
 }
 
-.model-update-dialog { text-align: left; gap: 14px; }
-.model-update-dialog h2 { padding-right: 20px; }
-.model-update-dialog p { max-height: none; overflow: visible; margin: 0; }
-.model-update-comparison { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; overflow-wrap: anywhere; }
-.model-update-comparison svg { width: 18px; color: var(--muted); flex-shrink: 0; }
-.model-update-price { display: flex; flex-direction: column; gap: 6px; }
-.model-update-price small { color: var(--muted); line-height: 1.5; }
+/* Price and credential status use the existing Settings palette. */
+.model-details { margin-top: 18px; }
+.model-details > p { line-height: 1.6; }
+.model-details dl { margin: 16px 0; }
+.model-details dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.model-details dt { color: var(--muted); }
+.model-details dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.model-details small, .api-key-health small { color: var(--muted); line-height: 1.6; }
+.language-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.language-buttons button { border: 1px solid var(--border); border-radius: 9px; background: var(--card); color: inherit; padding: 9px 14px; }
+.language-buttons button[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
+.language-combobox { position: relative; margin-bottom: 18px; }
+.language-combobox label { display: block; margin-bottom: 9px; font-weight: 600; }
+.language-combobox-input { position: relative; }
+.language-combobox-input input { width: 100%; padding-right: 40px; }
+.language-combobox-input > svg { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 18px; pointer-events: none; }
+.settings-section:has(.language-combobox) { overflow: visible; }
+.language-options { position: absolute; top: 76px; left: 0; right: 0; z-index: 20; max-height: 280px; overflow-y: auto; list-style: none; margin: 0; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 8px 24px #0002; }
+.language-options li { display: flex; justify-content: space-between; align-items: center; min-height: 38px; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+.language-options li.active { background: var(--accent-soft); }
+.language-options small { margin-left: 12px; color: var(--muted); }
+.language-options svg { width: 16px; color: var(--accent); }
+.api-key-health { display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; margin-bottom: 20px; }
+.api-key-status { display: flex; align-items: center; gap: 9px; }
+.api-key-status svg { width: 20px; flex-shrink: 0; }
+.api-key-status.ready { color: var(--success); }
+.api-key-status.invalid { color: var(--danger); }
+.api-key-health p { grid-column: 1 / -1; margin: 0; line-height: 1.6; color: var(--muted); }
+.api-key-health small { grid-column: 1 / -1; }
+.history-cost { display: block; margin-top: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 960px) { .model-details dl > div { flex-wrap: wrap; gap: 5px 16px; } .model-details dd { text-align: left; } }

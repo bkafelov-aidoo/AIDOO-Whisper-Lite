@@ -5,16 +5,21 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { isEnabled } from "@tauri-apps/plugin-autostart";
 import { AudioLines, Check, CircleArrowRight, CircleHelp, ExternalLink, FileText, FolderOpen, KeyRound, Languages, LoaderCircle, Mic, Power, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { errorMessage, translator } from "../i18n";
-import { type AppLanguage, type AppSettings, type BootstrapState, type MicrophoneProbe } from "../types";
+import { type AppLanguage, type AppSettings, type BootstrapState, type MicrophoneProbe, type CatalogModel, type ApiKeyStatus } from "../types";
 import { type ToastHandler } from "../ui-types";
 import { formatShortcut } from "../lib/presentation";
-import { SettingsSection, SettingRow, Toggle, LanguagePicker, StorageControls } from "../components/SettingsControls";
+import { SettingsSection, SettingRow, Toggle, LanguagePicker, StorageControls, InterfaceLanguageButtons } from "../components/SettingsControls";
 import { useShortcutCapture } from "../hooks/useShortcutCapture";
 import { VocabularyEditor, vocabularyIssue } from "../components/VocabularyEditor";
 
+import { ModelSelector } from "../components/ModelSelector";
+import { ApiKeyHealth } from "../components/ApiKeyHealth";
+
 const SUPPORT_EMAIL_URL = "mailto:support@aidoo.bg";
 
-export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToast, onOpenOnboarding }: {
+export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToast, onOpenOnboarding, models, modelLoading }: {
+  models: CatalogModel[];
+  modelLoading: boolean;
   data: BootstrapState;
   language: AppLanguage;
   isBusy: boolean;
@@ -31,10 +36,13 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [microphoneBusy, setMicrophoneBusy] = useState(false);
   const [accessibilityBusy, setAccessibilityBusy] = useState(false);
+  const [checkKeyBusy, setCheckKeyBusy] = useState(false);
+  const [health, setHealth] = useState(data.apiKeyStatus);
+  useEffect(() => setHealth(data.apiKeyStatus), [data.apiKeyStatus]);
   const [saveBusy, setSaveBusy] = useState(false);
   const launchAtLoginDirty = useRef(false);
-  const controlsDisabled = isBusy || keyBusy || shortcutBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy;
-  const shortcutButtonDisabled = isBusy || keyBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy;
+  const controlsDisabled = isBusy || keyBusy || shortcutBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy || checkKeyBusy;
+  const shortcutButtonDisabled = isBusy || keyBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy || checkKeyBusy;
   useShortcutCapture(shortcutBusy, setShortcutBusy, (binding) => setDraft((current) => ({ ...current, dictationShortcut: binding })), (message) => onToast(errorMessage(message, language), "error"));
 
   useEffect(() => {
@@ -68,13 +76,15 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
 
   return <div className="page settings-page"><header className="page-header"><div><span className="eyebrow">AIDOO WHISPER LITE</span><h1>{t("settings")}</h1><p>{t("version")} {data.appVersion}</p></div><button className="secondary-button" disabled={controlsDisabled} title={isBusy ? t("finishDictationFirst") : undefined} onClick={onOpenOnboarding}><CircleArrowRight />{t("openOnboarding")}</button></header>
     <SettingsSection icon={<KeyRound />} title={t("apiTitle")}>
+      <ApiKeyHealth hasKey={data.hasApiKey} status={health} language={language} checking={checkKeyBusy} disabled={controlsDisabled} onCheck={() => { setCheckKeyBusy(true); void invoke<ApiKeyStatus>("check_api_key").then(setHealth).catch(() => setHealth({ phase: "unavailable", checkedAt: null, lastSuccessAt: health?.lastSuccessAt ?? null })).finally(() => setCheckKeyBusy(false)); }} />
       <p className="section-help">{t("apiHelp")}</p><p className="instruction-note"><CircleHelp />{t("apiSteps")}</p>
       <div className="api-row"><input type="password" aria-label={t("apiTitle")} autoComplete="new-password" spellCheck={false} value={apiKey} disabled={controlsDisabled} onChange={(event) => setApiKey(event.target.value)} placeholder={data.hasApiKey ? "••••••••••••••••••" : "sk-…"} /><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl("https://platform.openai.com/api-keys"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("createKey")}</button><button className="primary-button" disabled={controlsDisabled || !apiKey.trim()} onClick={async () => { setKeyBusy(true); try { await invoke("save_api_key", { apiKey }); setApiKey(""); await onRefresh(); onToast(t("keySaved")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{keyBusy ? <LoaderCircle className="spin" /> : <ShieldCheck />}{t("verifySave")}</button></div>
       {data.hasApiKey && <button className="text-button danger" disabled={controlsDisabled} onClick={async () => { setKeyBusy(true); try { await invoke("delete_api_key"); await onRefresh(); onToast(t("deleted")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{t("removeKey")}</button>}
     </SettingsSection>
+    <ModelSelector settings={draft} models={models} language={language} disabled={controlsDisabled} loading={modelLoading} onChange={setDraft} />
     <SettingsSection icon={<Languages />} title={t("modelLanguage")}>
       <LanguagePicker settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />
-      <SettingRow title={t("interfaceLanguage")}><select aria-label={t("interfaceLanguage")} value={draft.uiLanguage} disabled={controlsDisabled} onChange={(event) => setDraft({ ...draft, uiLanguage: event.target.value as AppSettings["uiLanguage"] })}><option value="auto">{t("automatic")}</option><option value="bg">Български</option><option value="en">English</option></select></SettingRow>
+      <SettingRow title={t("interfaceLanguage")}><InterfaceLanguageButtons value={draft.uiLanguage} language={language} disabled={controlsDisabled} onChange={(uiLanguage) => setDraft({ ...draft, uiLanguage })} /></SettingRow>
     </SettingsSection>
     <VocabularyEditor settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />
     <SettingsSection icon={<Mic />} title={t("microphone")}>

@@ -1,25 +1,35 @@
-# OpenAI transcription models
+# OpenAI file-transcription models
 
-The product uses the stable OpenAI `gpt-transcribe` alias. A newer model ID can be selected only after a compatible curated recommendation and explicit user consent; the alias itself is not a discovery mechanism for unrelated successors.
+This is an unreleased source candidate. The existing 1.0.7 installer is unchanged. Settings contains a model selector; the default remains `gpt-transcribe`. Model selection takes effect only after Save Settings. There are no Economy/Maximum accuracy modes.
 
-The source candidate defaults to `gpt-transcribe` (about $0.0045/minute). The Economy/Maximum accuracy selector is removed from settings and onboarding. Existing settings, including former Economy settings, normalize to this default unless a curated successor was explicitly accepted while retaining language, vocabulary and other preferences. Existing history keeps its original model metadata.
+Prices were checked on 2026-10-11 against [OpenAI pricing](https://developers.openai.com/api/docs/pricing). USD/minute values are estimates, particularly for token-billed models; they are not an invoice or balance query.
 
-Model availability and pricing must be checked before each release against [GPT-Transcribe](https://developers.openai.com/api/docs/models/gpt-transcribe) and [API pricing](https://developers.openai.com/api/docs/pricing). This source change is not a new installer or installed-runtime acceptance.
+| Model | Estimated USD/min | Billing | Vocabulary |
+| --- | ---: | --- | --- |
+| gpt-transcribe | 0.0045 | Duration | `keywords[]` |
+| gpt-4o-mini-transcribe | 0.003 | Tokens | `prompt` |
+| gpt-4o-transcribe | 0.006 | Tokens | `prompt` |
+| gpt-4o-transcribe-diarize | 0.006 | Tokens | Unsupported |
+| whisper-1 | 0.006 | Duration | Short `prompt` |
 
-Explicit languages use `languages[]`; Automatic omits the language hint. See the [File transcription guide](https://developers.openai.com/api/docs/guides/speech-to-text#add-transcription-context).
+The two documented Mini snapshots (`2025-03-20` and `2025-12-15`) are also selectable at the Mini rate. Only models compatible with uploading a completed recording are included. Realtime models are excluded. Features and aliases come from the official [speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text) and model pages: [GPT-Transcribe](https://developers.openai.com/api/docs/models/gpt-transcribe), [Mini](https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe), [4o](https://developers.openai.com/api/docs/models/gpt-4o-transcribe), [Diarize](https://developers.openai.com/api/docs/models/gpt-4o-transcribe-diarize), [Whisper](https://developers.openai.com/api/docs/models/whisper-1).
 
-The app uploads the completed recording as FLAC with an extension-bearing filename and `audio/flac` content type. The official [Create transcription API reference](https://developers.openai.com/api/reference/python/resources/audio/subresources/transcriptions/methods/create) lists FLAC as a supported transcription input. Keeping FLAC reduces transfer size while preserving lossless local audio.
+## Language and vocabulary
 
-OpenAI's [File transcription guide](https://developers.openai.com/api/docs/guides/speech-to-text) limits files to 25 MB. The app applies the conservative decimal boundary of 25,000,000 bytes before upload, keeps an oversized recording locally and disables Retry because sending the unchanged file again cannot succeed.
+Interface language uses Automatic/Bulgarian/English buttons. Dictation language uses a searchable combobox, filtering by localized name, English name or code. Options are limited to the selected model's curated language list. Automatic omits a language hint. The common language codes originate from [OpenAI Whisper's tokenizer](https://github.com/openai/whisper/blob/main/whisper/tokenizer.py); GPT-Transcribe also exposes documented Cantonese and regional Chinese hints. Quality varies by language. Choosing a model incompatible with the current hint resets the draft hint to Automatic before Save.
 
-## Personal vocabulary
+Personal vocabulary retains the existing limits: 50 terms, 80 Unicode characters per term, 2000 total, with whitespace trimming and case-insensitive deduplication. GPT-Transcribe receives `keywords[]`; 4o/Mini receive a comma-separated prompt. Whisper receives a conservative 200-byte prompt ending at a whole term. Diarize disables vocabulary use while retaining the user's terms. Hints never force a replacement in output. No separate text-cleanup model is called.
 
-Settings → Dictation vocabulary accepts literal words or phrases, one per line. It keeps the first spelling, trims outer whitespace and removes empty lines and case-insensitive duplicates. Limits are 50 distinct terms, 80 Unicode characters per term and 2000 characters total. Invalid keywords and control characters are rejected before an API request. Older settings load with an empty list. Disabling vocabulary retains the list but sends no hints.
+The native protocol sends `languages[]` for GPT-Transcribe, singular `language` for older models, and `chunking_strategy=auto` with `diarized_json` for Diarize. Diarize final text includes speaker labels from response segments. Other models use the completed JSON text. The existing completed FLAC upload and 25,000,000-byte boundary are retained. The app displays only the final result after Stop; there is no preliminary text, streaming audio or Realtime session. No automatic audio retry is added.
 
-`gpt-transcribe` receives individual `keywords[]`. These are recognition hints, not mandatory output or automatic find-and-replace rules. No text correction model is called. Vocabulary is stored privately in settings and sent only with the explicit transcription request. Diagnostic settings expose its enabled state and term count, never its content.
+## History and recovery
 
-The completed FLAC upload keeps the existing JSON response flow. The app waits for the full transcript before clipboard, paste, files and history. No preliminary text is displayed, no audio is transmitted while recording, and there is no Realtime session.
+Each new history entry stores an estimated USD cost, the per-minute rate, billing basis and pricing date used for that request. Later model/rate changes do not recalculate old entries. Legacy history without cost metadata displays no data. For token models, duration multiplied by the published estimated minute rate remains approximate.
 
-The native transcription client reuses its connection pool, sends credentials per request and preserves HTTPS-only, no-redirect and timeout policies. Per-minute pricing is an estimate; see [API pricing](https://developers.openai.com/api/docs/pricing#transcription-and-speech).
+Recovery records retain the model and rate used for an already completed request. Finish locally uses those details even after a Settings change, without another network request. Legacy completed recovery without model metadata records an unknown model/cost instead of inventing a charge.
 
-See [Model recommendations](MODEL-UPDATES.md) for background checks, consent, persistence and catalog maintenance. No text-cleanup model has been added.
+## Key status
+
+Settings distinguishes missing, unchecked, OpenAI-verified, successful transcription, invalid, restricted, rate-limited and unavailable checks. Background/manual checks use the free model-list endpoint. HTTP 200 verifies that OpenAI accepts the key; it does not prove transcription permission, sufficient balance or future availability. HTTP 403 means the list check is restricted, not proof that dictation is broken. Only a real successful transcription establishes Working. Status is held in memory; the key remains in Keychain and is excluded from settings and diagnostics.
+
+See [catalog maintenance](MODEL-UPDATES.md) for background availability checks and safe selection.

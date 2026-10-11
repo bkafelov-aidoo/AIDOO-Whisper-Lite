@@ -2,17 +2,19 @@
 
 A focused macOS voice typing app. Hold a keyboard shortcut, speak, and release it to send the recording to the selected OpenAI transcription model. The result stays in the clipboard and can be pasted automatically into the active application.
 
+The current model/language/key-status/cost changes are an unreleased source candidate; existing installers remain unchanged.
+
 ## Product behavior
 
 - Six-step Bulgarian/English onboarding for API key, permissions, shortcut, model, language and local storage.
-- OpenAI API key is verified and stored in macOS Keychain. The app never stores it in settings, logs or diagnostics.
-- Transcription defaults to `gpt-transcribe` (about $0.0045/minute), with no model-mode selector. Curated compatible successors can be offered at startup and selected after explicit consent; see [model recommendations](docs/MODEL-UPDATES.md).
+- OpenAI API key is stored in macOS Keychain, with an explicit verification/working status in Settings. The app never stores it in settings, logs or diagnostics.
+- Transcription defaults to `gpt-transcribe` (about $0.0045/minute). Settings lets users compare compatible file-transcription models, features and estimated prices; see [models](docs/MODELS.md).
 - Personal vocabulary: add dental words or phrases in Settings, one per line, and enable them for transcription.
 - Transcription reuses its connection pool; the existing flow shows only the completed text.
-- Automatic language detection or an explicit language to reduce latency.
-- Optional FLAC, TXT and 10-item local history, with independent controls.
+- Automatic language detection or a searchable explicit language hint, filtered by model support; interface language uses buttons.
+- Optional FLAC, TXT and 10-item local history, with independent controls and estimated per-transcription costs.
 - Automatic paste with a clear clipboard fallback message.
-- A static AIDOO menu bar icon and a bottom-center recording/status overlay.
+- A static AIDOO menu bar icon and a movable recording/status overlay initially placed at the top right.
 - Failed audio survives restarts until the user retries or deletes it.
 - If OpenAI has already returned text, recovery finishes clipboard and local files without sending or charging the audio again.
 - New versions are distributed as notarized DMG downloads from the AIDOO website.
