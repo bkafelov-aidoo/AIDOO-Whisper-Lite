@@ -8,6 +8,8 @@ The bundle identifier is `app.aidoo.whisper-lite`, the minimum system version is
 
 ## Version and local release
 
+For every new DMG installer, including test installers, increase the application version before building (the patch number by default). Never deliver different installer contents under an already delivered version. Keep the version consistent in the app, DMG filename, manifest, website and both package lockfiles. Preserve prior installers and immutable release/baseline tags. Signing, stapling and rebuilding the disk image from the same candidate app keep that candidate version throughout the packaging sequence.
+
 Keep the same semantic version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The verified release toolchain is pinned in `rust-toolchain.toml` and both workflows; update it deliberately only after the full source checks pass on the replacement compiler. Update `website/release-notes.html`, regenerate `resources/THIRD_PARTY_NOTICES.txt`, commit, and create the exact `lite-vX.Y.Z` tag. The final release command refuses uncommitted Lite changes, an untagged HEAD or notices that differ after regeneration. Its preflight also proves that every registered Rust command appears in the application manifest and exactly one window capability boundary. CI rejects a branch run or a tag whose version differs from the application before it imports the signing certificate.
 
 `npm run check:website` validates the three static public pages, their local links, required privacy/support/release content, matching product icon and release version. It also rejects active web elements and every external reference except the exact `mailto:support@aidoo.bg` support link.

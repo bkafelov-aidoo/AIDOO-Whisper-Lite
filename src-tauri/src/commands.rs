@@ -70,6 +70,7 @@ pub(super) fn update_settings(
     let _operation = acquire_operation(&app, &state)?;
     let mut settings = settings;
     settings.normalize();
+    vocabulary::validate(&settings.vocabulary_terms)?;
     shortcuts::validate_settings(&settings)?;
     if settings.save_audio || settings.save_text {
         let directory = selected_output_dir(&settings);
@@ -559,6 +560,8 @@ pub(super) fn diagnostic_settings(settings: &AppSettings) -> serde_json::Value {
         "uiLanguage": settings.ui_language,
         "language": settings.language,
         "model": settings.model,
+        "vocabularyEnabled": settings.vocabulary_enabled,
+        "vocabularyTermCount": settings.vocabulary_terms.len(),
         "autoPaste": settings.auto_paste,
         "saveAudio": settings.save_audio,
         "saveText": settings.save_text,

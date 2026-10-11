@@ -31,6 +31,8 @@ pub struct AppSettings {
     pub ui_language: String,
     pub language: String,
     pub model: String,
+    pub vocabulary_enabled: bool,
+    pub vocabulary_terms: Vec<String>,
     pub auto_paste: bool,
     pub save_audio: bool,
     pub save_text: bool,
@@ -49,6 +51,8 @@ impl Default for AppSettings {
             ui_language: "auto".into(),
             language: "bg".into(),
             model: ECONOMY_MODEL.into(),
+            vocabulary_enabled: true,
+            vocabulary_terms: Vec::new(),
             auto_paste: true,
             save_audio: true,
             save_text: true,
@@ -64,6 +68,7 @@ impl Default for AppSettings {
 
 impl AppSettings {
     pub fn normalize(&mut self) {
+        self.vocabulary_terms = crate::vocabulary::normalize(&self.vocabulary_terms);
         if !matches!(self.model.as_str(), ECONOMY_MODEL | ACCURACY_MODEL) {
             self.model = ECONOMY_MODEL.into();
         }
@@ -103,6 +108,22 @@ mod tests {
         };
         settings.normalize();
         assert_eq!(settings.model, ACCURACY_MODEL);
+    }
+
+    #[test]
+    fn vocabulary_survives_settings_round_trip_and_old_settings_load_without_hints() {
+        let legacy: AppSettings = serde_json::from_str(r#"{"model":"gpt-transcribe"}"#).unwrap();
+        assert!(legacy.vocabulary_terms.is_empty());
+        let mut settings = AppSettings {
+            vocabulary_enabled: false,
+            vocabulary_terms: vec![" кофердам ".into(), "Кофердам".into(), "".into()],
+            ..AppSettings::default()
+        };
+        settings.normalize();
+        let loaded: AppSettings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert!(!loaded.vocabulary_enabled);
+        assert_eq!(loaded.vocabulary_terms, vec!["кофердам"]);
     }
 
     #[test]

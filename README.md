@@ -8,6 +8,8 @@ A focused macOS voice typing app. Hold a keyboard shortcut, speak, and release i
 - OpenAI API key is verified and stored in macOS Keychain. The app never stores it in settings, logs or diagnostics.
 - Economy model: `gpt-4o-mini-transcribe` (about $0.003/minute).
 - Maximum accuracy: `gpt-transcribe` (about $0.0045/minute).
+- Personal vocabulary: add dental words or phrases in Settings, one per line, and enable them for transcription.
+- Transcription reuses its connection pool; the existing flow shows only the completed text.
 - Automatic language detection or an explicit language to reduce latency.
 - Optional FLAC, TXT and 10-item local history, with independent controls.
 - Automatic paste with a clear clipboard fallback message.

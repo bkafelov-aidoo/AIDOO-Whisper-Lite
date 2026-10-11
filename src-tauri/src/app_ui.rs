@@ -110,6 +110,7 @@ pub(super) fn localized_native_error(error: &str, english: bool) -> String {
         return error.into();
     }
     let exact = match error {
+        vocabulary::INVALID_VOCABULARY => Some("Vocabulary allows up to 50 terms, 80 characters each, 2000 characters in total. Use one term per line without <, > or control characters."),
         "Ключът трябва да започва с sk-." => Some("The key must start with sk-."),
         "Не е намерен микрофон." => Some("No microphone was found."),
         "Не е намерен микрофон. Свържете устройство и опитайте отново." => {

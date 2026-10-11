@@ -10,6 +10,7 @@ import { type ToastHandler } from "../ui-types";
 import { formatShortcut } from "../lib/presentation";
 import { SettingsSection, SettingRow, Toggle, ModelPicker, StorageControls } from "../components/SettingsControls";
 import { useShortcutCapture } from "../hooks/useShortcutCapture";
+import { VocabularyEditor, vocabularyIssue } from "../components/VocabularyEditor";
 
 const SUPPORT_EMAIL_URL = "mailto:support@aidoo.bg";
 
@@ -75,6 +76,7 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
       <ModelPicker settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />
       <SettingRow title={t("interfaceLanguage")}><select aria-label={t("interfaceLanguage")} value={draft.uiLanguage} disabled={controlsDisabled} onChange={(event) => setDraft({ ...draft, uiLanguage: event.target.value as AppSettings["uiLanguage"] })}><option value="auto">{t("automatic")}</option><option value="bg">Български</option><option value="en">English</option></select></SettingRow>
     </SettingsSection>
+    <VocabularyEditor settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />
     <SettingsSection icon={<Mic />} title={t("microphone")}>
       <SettingRow title={t("microphone")}><select aria-label={t("microphone")} value={draft.microphoneName ?? ""} disabled={controlsDisabled} onChange={(event) => setDraft({ ...draft, microphoneName: event.target.value || null })}><option value="">{t("systemDefault")}</option>{data.microphones.map((item) => <option key={item} value={item}>{item}</option>)}</select></SettingRow>
       <SettingRow title={t("automaticMicrophoneFallback")} detail={t("automaticMicrophoneFallbackHelp")}><Toggle label={t("automaticMicrophoneFallback")} checked={draft.automaticMicrophoneFallback} disabled={controlsDisabled} onChange={(automaticMicrophoneFallback) => setDraft({ ...draft, automaticMicrophoneFallback })} /></SettingRow>
@@ -92,6 +94,6 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
     <SettingsSection icon={<ShieldCheck />} title={t("diagnostics")}>
       <p className="section-help">{t("diagnosticsHelp")}</p><div className="inline-actions"><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { setDiagnosticBusy(true); try { const path = await invoke<string>("create_diagnostic_bundle"); await invoke("open_local_path", { path, reveal: true }); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setDiagnosticBusy(false); } }}>{diagnosticBusy ? <LoaderCircle className="spin" /> : <FileText />}{t("createDiagnostics")}</button><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl(SUPPORT_EMAIL_URL); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("openSupport")}</button></div>
     </SettingsSection>
-    <footer className="settings-footer"><button className="primary-button large" disabled={controlsDisabled} title={isBusy ? t("finishDictationFirst") : undefined} onClick={async () => { setSaveBusy(true); try { await onSave(draft); launchAtLoginDirty.current = false; } catch { /* The parent already showed the localized error. */ } finally { setSaveBusy(false); } }}>{saveBusy ? <LoaderCircle className="spin" /> : <Check />}{t("save")}</button></footer>
+    <footer className="settings-footer"><button className="primary-button large" disabled={controlsDisabled || Boolean(vocabularyIssue(draft.vocabularyTerms))} title={isBusy ? t("finishDictationFirst") : undefined} onClick={async () => { setSaveBusy(true); try { await onSave(draft); launchAtLoginDirty.current = false; } catch { /* The parent already showed the localized error. */ } finally { setSaveBusy(false); } }}>{saveBusy ? <LoaderCircle className="spin" /> : <Check />}{t("save")}</button></footer>
   </div>;
 }

@@ -21,6 +21,7 @@ mod storage;
 mod tests;
 mod text_insertion;
 mod transcription;
+mod vocabulary;
 
 use chrono::{Local, Utc};
 use models::{

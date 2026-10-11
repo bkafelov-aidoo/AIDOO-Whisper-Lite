@@ -226,6 +226,7 @@ fn diagnostic_settings_exclude_private_device_and_path_details() {
     let settings = AppSettings {
         output_directory: Some("/Users/example/Private Transcripts".into()),
         microphone_name: Some("Owner's Studio Microphone".into()),
+        vocabulary_terms: vec!["Private vocabulary phrase".into()],
         ..AppSettings::default()
     };
 
@@ -236,6 +237,8 @@ fn diagnostic_settings_exclude_private_device_and_path_details() {
     assert!(!serialized.contains("Private Transcripts"));
     assert!(!serialized.contains("Owner's Studio Microphone"));
     assert!(!serialized.contains("/Users/example"));
+    assert!(!serialized.contains("Private vocabulary phrase"));
+    assert!(serialized.contains("\"vocabularyTermCount\":1"));
 }
 
 #[test]

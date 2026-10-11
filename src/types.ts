@@ -5,6 +5,8 @@ export interface AppSettings {
   uiLanguage: "auto" | "bg" | "en";
   language: string;
   model: "gpt-4o-mini-transcribe" | "gpt-transcribe";
+  vocabularyEnabled: boolean;
+  vocabularyTerms: string[];
   autoPaste: boolean;
   saveAudio: boolean;
   saveText: boolean;
