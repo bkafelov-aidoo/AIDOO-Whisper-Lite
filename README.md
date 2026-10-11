@@ -73,3 +73,5 @@ The wizard verifies the exact Developer ID Application identity before writing e
 Use Settings → Diagnostics to create a local ZIP that excludes the API key, transcript content and audio. Review it before sharing, then email `support@aidoo.bg` and attach the ZIP only if you choose to. The app never uploads diagnostics automatically.
 
 The Windows implementation will be created as a separate sibling project after the Mac behavior is accepted, so its native shortcut, paste, storage, signing and installer code can follow Windows conventions.
+
+Ready installers are collected in the local `DMG/` folder, containing only versioned DMG files. Run `python3 scripts/collect-clean-dmgs.py` to verify and collect completed releases.

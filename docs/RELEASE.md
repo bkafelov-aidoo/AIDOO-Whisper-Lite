@@ -21,6 +21,8 @@ Run `npm run release:mac`. It writes the final website assets to `release/<versi
 - privacy, support and release-notes pages with their shared style and product icon;
 - `release-manifest.json` with the size and SHA-256 of every staged file.
 
+The release command also collects the completed installers in `DMG/`, with only versioned `.dmg` files in that folder. Existing copies are preserved and checked against each release manifest; a different file with the same name is rejected. Run `python3 scripts/collect-clean-dmgs.py` to collect earlier completed releases. This folder is local and excluded from Git.
+
 Upload the DMG and checksum to the AIDOO website. Users install a new version by downloading the newer notarized DMG from the website; the application does not perform background or in-app update checks.
 
 The release command automatically runs `npm run audit:mac` on the exact copied DMG. This independent check mounts the distribution image and revalidates its checksum, architecture, deployment target, identity, entitlements, notarization and Gatekeeper status without launching the application. Run `npm run audit:mac` again after transferring the files to another location or before upload.
