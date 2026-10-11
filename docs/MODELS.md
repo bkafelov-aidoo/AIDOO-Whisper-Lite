@@ -1,6 +1,6 @@
 # OpenAI file-transcription models
 
-This is an unreleased source candidate. The existing 1.0.7 installer is unchanged. Settings contains a model selector; the default remains `gpt-transcribe`. Model selection takes effect only after Save Settings. There are no Economy/Maximum accuracy modes.
+Included in version 1.0.8. The existing 1.0.7 installer is preserved. Settings contains a model selector; the default remains `gpt-transcribe`. Model selection takes effect only after Save Settings. There are no Economy/Maximum accuracy modes.
 
 Prices were checked on 2026-10-11 against [OpenAI pricing](https://developers.openai.com/api/docs/pricing). USD/minute values are estimates, particularly for token-billed models; they are not an invoice or balance query.
 

@@ -1,6 +1,6 @@
 # Transcription model catalog
 
-Source candidate, not an installed release. Settings replaces the recommendation modal with one model selector showing characteristics, estimated prices, vocabulary support and account availability. New curated compatible models are marked New after the background check. Saving Settings confirms the selected model; discovery never changes it automatically.
+Version 1.0.8 source. Settings replaces the recommendation modal with one model selector showing characteristics, estimated prices, vocabulary support and account availability. New curated compatible models are marked New after the background check. Saving Settings confirms the selected model; discovery never changes it automatically.
 
 The native app reads the fixed public [catalog](https://github.com/bkafelov-aidoo/AIDOO-Whisper-Lite/blob/main/catalog/transcription-models.json) and the user's OpenAI model list once per API-key revision in a process. Concurrent calls share the check. Manual key checks invalidate it. Replacing/removing a key discards stale results and resets availability/status. Bundled choices remain available offline or when the account cannot list models; known unavailable choices cannot be newly selected. Keeping an already selected model permits saving unrelated preferences.
 
@@ -12,4 +12,4 @@ Discovery sends no audio or vocabulary. GitHub receives no credential. Both requ
 
 The native command resolves selection against native-held catalog metadata, not prices supplied by the WebView. Settings atomically persists the ID and trusted model snapshot under the exclusive operation guard. Old private `model-choice.json` is read only for migration when settings lacks model details. Subsequent ordinary settings saves retain the selected choice; the legacy record cannot override it. History keeps original IDs and cost snapshots.
 
-Verification uses local HTTP fixtures and private temporary storage for protocols, account availability, schema compatibility, credential isolation, concurrent check deduplication, key invalidation, persistence and recovery. UI checks use mock data without real API requests. These checks do not establish microphone behavior or comparative transcription accuracy. No new DMG or baseline promotion accompanies this candidate.
+Verification uses local HTTP fixtures and private temporary storage for protocols, account availability, schema compatibility, credential isolation, concurrent check deduplication, key invalidation, persistence and recovery. UI checks use mock data without real API requests. These checks do not establish microphone behavior or comparative transcription accuracy. Building the 1.0.8 DMG does not promote an installed working baseline.
