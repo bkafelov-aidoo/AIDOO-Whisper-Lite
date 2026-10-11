@@ -1,16 +1,16 @@
 # OpenAI file-transcription models
 
-Included in version 1.0.8. The existing 1.0.7 installer is preserved. Settings contains a model selector; the default remains `gpt-transcribe`. Model selection takes effect only after Save Settings. There are no Economy/Maximum accuracy modes.
+Included in version 1.0.9. The existing 1.0.7 installer is preserved. Settings contains a model selector; the default remains `gpt-transcribe`. Model selection takes effect only after Save Settings. There are no Economy/Maximum accuracy modes.
 
 Prices were checked on 2026-10-11 against [OpenAI pricing](https://developers.openai.com/api/docs/pricing). USD/minute values are estimates, particularly for token-billed models; they are not an invoice or balance query.
 
 | Model | Estimated USD/min | Billing | Vocabulary |
 | --- | ---: | --- | --- |
-| gpt-transcribe | 0.0045 | Duration | `keywords[]` |
-| gpt-4o-mini-transcribe | 0.003 | Tokens | `prompt` |
-| gpt-4o-transcribe | 0.006 | Tokens | `prompt` |
-| gpt-4o-transcribe-diarize | 0.006 | Tokens | Unsupported |
-| whisper-1 | 0.006 | Duration | Short `prompt` |
+| gpt-transcribe | $0.0045 | Duration | `keywords[]` |
+| gpt-4o-mini-transcribe | $0.003 | Tokens | `prompt` |
+| gpt-4o-transcribe | $0.006 | Tokens | `prompt` |
+| gpt-4o-transcribe-diarize | $0.006 | Tokens | Unsupported |
+| whisper-1 | $0.006 | Duration | Short `prompt` |
 
 The two documented Mini snapshots (`2025-03-20` and `2025-12-15`) are also selectable at the Mini rate. Only models compatible with uploading a completed recording are included. Realtime models are excluded. Features and aliases come from the official [speech-to-text guide](https://developers.openai.com/api/docs/guides/speech-to-text) and model pages: [GPT-Transcribe](https://developers.openai.com/api/docs/models/gpt-transcribe), [Mini](https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe), [4o](https://developers.openai.com/api/docs/models/gpt-4o-transcribe), [Diarize](https://developers.openai.com/api/docs/models/gpt-4o-transcribe-diarize), [Whisper](https://developers.openai.com/api/docs/models/whisper-1).
 
