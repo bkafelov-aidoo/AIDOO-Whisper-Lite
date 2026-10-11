@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "check": "tsc --noEmit && npm run check:structure && npm run check:i18n && npm run check:release-config && npm run check:macos-dependencies && npm run check:website",
+    "check": "tsc --noEmit && npm run check:settings-contract && npm run check:model-catalog && npm run check:structure && npm run check:i18n && npm run check:release-config && npm run check:macos-dependencies && npm run check:website",
     "check:structure": "python3 scripts/check-source-layout.py",
     "check:i18n": "node scripts/check-i18n-errors.mjs",
     "check:release-config": "python3 scripts/check-release-config.py",
@@ -18,7 +18,9 @@
     "release:mac": "bash scripts/release-mac.sh",
     "audit:mac": "bash scripts/audit-mac-release.sh",
     "package:website": "python3 scripts/package-website-release.py",
-    "verify:website": "python3 scripts/package-website-release.py --verify"
+    "verify:website": "python3 scripts/package-website-release.py --verify",
+    "check:settings-contract": "node scripts/check-settings-contract.mjs",
+    "check:model-catalog": "node scripts/check-model-catalog.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
@@ -34,6 +36,8 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.2",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

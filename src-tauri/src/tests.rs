@@ -39,6 +39,7 @@ fn recovery_recording(path: &Path, retryable: bool) -> FailedRecording {
         retryable,
         completed_text: None,
         transcription_model: None,
+        transcription_language: None,
     }
 }
 
@@ -121,7 +122,13 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
         ));
         std::fs::write(&source, b"fLaC charged audio").unwrap();
         let mut paid = recovery_recording(&source, false);
-        paid.transcription_model = crate::model_updates::bundled_model("gpt-4o-mini-transcribe");
+        let request_settings = AppSettings {
+            model: "gpt-4o-mini-transcribe".into(),
+            model_details: crate::model_updates::bundled_model("gpt-4o-mini-transcribe"),
+            language: "bg".into(),
+            ..AppSettings::default()
+        };
+        crate::recovery::snapshot_transcription_settings(&mut paid, &request_settings);
         let failed_recording = Mutex::new(Some(paid));
 
         preserve_completed_recovery_with(
@@ -142,9 +149,14 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
             Some("already paid text")
         );
         assert!(!persisted.retryable);
-        let restored =
-            crate::recovery::completed_recovery_settings(AppSettings::default(), &persisted);
+        assert_eq!(persisted.transcription_language.as_deref(), Some("bg"));
+        let later_settings = AppSettings {
+            language: "en".into(),
+            ..AppSettings::default()
+        };
+        let restored = crate::recovery::completed_recovery_settings(later_settings, &persisted);
         assert_eq!(restored.model, "gpt-4o-mini-transcribe");
+        assert_eq!(restored.language, "bg");
         let cost =
             crate::transcription_cost::estimate(restored.model_details.as_ref(), 30.0).unwrap();
         assert!((cost.estimated_usd - 0.0015).abs() < 1e-12);
@@ -157,6 +169,39 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
     });
 
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn completed_recovery_restores_request_language_and_legacy_is_unknown() {
+    let paid: FailedRecording = serde_json::from_value(serde_json::json!({
+        "path": "/tmp/paid.flac", "createdAt": "2026-10-11T18:00:00Z",
+        "durationSeconds": 30.0, "error": "local save failed", "retryable": false,
+        "completedText": "already paid Bulgarian text", "transcriptionLanguage": "bg",
+        "transcriptionModel": crate::model_updates::bundled_model("gpt-4o-mini-transcribe").unwrap()
+    }))
+    .unwrap();
+    let current = AppSettings {
+        language: "en".into(),
+        ..AppSettings::default()
+    };
+    let restored = crate::recovery::completed_recovery_settings(current.clone(), &paid);
+    assert_eq!(restored.language, "bg");
+    assert_eq!(restored.model, "gpt-4o-mini-transcribe");
+    let persisted: FailedRecording =
+        serde_json::from_slice(&serde_json::to_vec(&paid).unwrap()).unwrap();
+    assert_eq!(
+        crate::recovery::completed_recovery_settings(current.clone(), &persisted).language,
+        "bg"
+    );
+    let legacy = recovery_recording(Path::new("/tmp/legacy.flac"), false);
+    assert_eq!(
+        crate::recovery::completed_recovery_settings(current, &legacy).language,
+        "unknown"
+    );
+    assert_eq!(
+        recovery_plan(&paid).unwrap(),
+        RecoveryPlan::FinishLocally("already paid Bulgarian text".into())
+    );
 }
 
 #[test]

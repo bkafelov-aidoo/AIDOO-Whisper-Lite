@@ -8,19 +8,21 @@ pub struct ApiKeyStatus {
     pub checked_at: Option<String>,
     pub last_success_at: Option<String>,
 }
+impl ApiKeyStatus {
+    fn record_phase(&mut self, phase: &str, checked_at: String) {
+        self.checked_at = Some(checked_at);
+        // A free model-list response proves authentication, never that a later
+        // paid transcription failure (for example exhausted quota) is resolved.
+        self.phase = phase.into();
+        if phase == "working" {
+            self.last_success_at = self.checked_at.clone();
+        }
+    }
+}
 pub fn record(app: &tauri::AppHandle, phase: &str) {
     let state = app.state::<crate::AppState>();
     if let Ok(mut status) = state.api_key_status.lock() {
-        status.checked_at = Some(chrono::Utc::now().to_rfc3339());
-        status.phase = if phase == "verified" && status.last_success_at.is_some() {
-            "working"
-        } else {
-            phase
-        }
-        .into();
-        if phase == "working" {
-            status.last_success_at = status.checked_at.clone();
-        }
+        status.record_phase(phase, chrono::Utc::now().to_rfc3339());
         let _ = app.emit("api-key:status", status.clone());
     };
 }
@@ -82,6 +84,28 @@ pub async fn probe_with_client(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn free_model_check_cannot_revive_working_after_a_paid_request_failed() {
+        for failure in ["invalid", "restricted", "limited", "unavailable"] {
+            let mut status = super::ApiKeyStatus::default();
+            status.record_phase("working", "2026-10-11T18:00:00Z".into());
+            assert_eq!(status.phase, "working");
+            status.record_phase(failure, "2026-10-11T18:01:00Z".into());
+            assert_eq!(status.phase, failure);
+            status.record_phase("verified", "2026-10-11T18:02:00Z".into());
+            assert_eq!(status.phase, "verified");
+            assert_eq!(
+                status.last_success_at.as_deref(),
+                Some("2026-10-11T18:00:00Z")
+            );
+            status.record_phase("working", "2026-10-11T18:03:00Z".into());
+            assert_eq!(status.phase, "working");
+            assert_eq!(
+                status.last_success_at.as_deref(),
+                Some("2026-10-11T18:03:00Z")
+            );
+        }
+    }
     #[test]
     fn forbidden_offline_and_quota_are_not_a_working_key() {
         use super::phase_for_status;

@@ -312,7 +312,7 @@ async fn stop_and_transcribe_inner(app: &AppHandle) -> Result<TranscriptionCompl
         false,
         None,
     )?;
-    pending.transcription_model = settings.model_details.clone();
+    snapshot_transcription_settings(&mut pending, &settings);
     let request_audio = PathBuf::from(&pending.path);
     store_failed_recording(app, &state, pending)?;
     let _ = std::fs::remove_file(&captured.path);

@@ -176,6 +176,8 @@ mod tests {
 
         assert!(recording.retryable);
         assert!(recording.completed_text.is_none());
+        assert!(recording.transcription_model.is_none());
+        assert!(recording.transcription_language.is_none());
     }
 }
 
@@ -207,6 +209,8 @@ pub struct FailedRecording {
     pub completed_text: Option<String>,
     #[serde(default)]
     pub transcription_model: Option<crate::model_updates::CatalogModel>,
+    #[serde(default)]
+    pub transcription_language: Option<String>,
 }
 
 fn default_true() -> bool {

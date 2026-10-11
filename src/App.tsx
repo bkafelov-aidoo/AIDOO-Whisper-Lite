@@ -1,3 +1,4 @@
+import { settingsForCommand } from "./lib/settings-contract";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -96,7 +97,7 @@ export default function App() {
   const t = translator(language);
 
   const persistSettings = useCallback(async (settings: AppSettings) => {
-    const saved = await invoke<AppSettings>("update_settings", { settings });
+    const saved = await invoke<AppSettings>("update_settings", { settings: settingsForCommand(settings) });
     setData((current) => current ? { ...current, settings: saved } : current);
     return saved;
   }, []);

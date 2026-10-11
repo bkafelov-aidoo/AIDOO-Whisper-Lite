@@ -40,6 +40,7 @@ pub struct TranscriptionFailure {
     pub message: String,
     pub retryable: bool,
     pub http_status: Option<u16>,
+    request_attempted: bool,
 }
 
 impl TranscriptionFailure {
@@ -48,6 +49,7 @@ impl TranscriptionFailure {
             retryable: !message.starts_with(FILE_TOO_LARGE_PREFIX),
             message,
             http_status: None,
+            request_attempted: false,
         }
     }
 
@@ -56,6 +58,7 @@ impl TranscriptionFailure {
             message,
             retryable,
             http_status: None,
+            request_attempted: true,
         }
     }
 }
@@ -212,15 +215,21 @@ pub async fn transcribe(
         "https://api.openai.com/v1/audio/transcriptions",
     )
     .await;
-    let phase = match &result {
+    if let Some(phase) = api_key_phase(&result) {
+        crate::api_key_status::record(app, phase);
+    }
+    result
+}
+
+fn api_key_phase(result: &Result<String, TranscriptionFailure>) -> Option<&'static str> {
+    Some(match result {
         Ok(_) => "working",
+        Err(error) if !error.request_attempted => return None,
         Err(error) => error
             .http_status
             .map(crate::api_key_status::phase_for_status)
             .unwrap_or("unavailable"),
-    };
-    crate::api_key_status::record(app, phase);
-    result
+    })
 }
 
 async fn transcribe_with_client(

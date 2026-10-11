@@ -17,6 +17,8 @@ use recovery::*;
 mod api_key_status;
 mod model_updates;
 mod models;
+#[cfg(test)]
+mod settings_contract_tests;
 mod shortcuts;
 mod storage;
 #[cfg(test)]

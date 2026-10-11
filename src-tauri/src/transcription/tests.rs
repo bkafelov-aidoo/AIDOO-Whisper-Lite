@@ -173,6 +173,11 @@ async fn invalid_vocabulary_is_rejected_before_any_api_request() {
         listener.accept().unwrap_err().kind(),
         std::io::ErrorKind::WouldBlock
     );
+    assert_eq!(
+        super::api_key_phase(&Err(failure)),
+        None,
+        "local vocabulary rejection must not change API-key health"
+    );
     std::fs::remove_file(path).unwrap();
 }
 
@@ -463,4 +468,29 @@ async fn every_file_model_uses_its_own_parameters_without_streaming_or_retries()
         );
     }
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn local_failure_leaves_health_untouched_but_api_failures_update_it() {
+    for message in [
+        "file unavailable",
+        "Неподдържан модел.",
+        crate::vocabulary::INVALID_VOCABULARY,
+    ] {
+        assert_eq!(
+            super::api_key_phase(&Err(TranscriptionFailure::before_request(message.into()))),
+            None
+        );
+    }
+    let mut failure = TranscriptionFailure::after_request("quota".into(), true);
+    failure.http_status = Some(429);
+    assert_eq!(super::api_key_phase(&Err(failure)), Some("limited"));
+    assert_eq!(
+        super::api_key_phase(&Err(TranscriptionFailure::after_request(
+            "timeout".into(),
+            false
+        ))),
+        Some("unavailable")
+    );
+    assert_eq!(super::api_key_phase(&Ok("text".into())), Some("working"));
 }

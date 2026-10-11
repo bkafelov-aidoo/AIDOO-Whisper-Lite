@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { isEnabled } from "@tauri-apps/plugin-autostart";
 import { AudioLines, Check, CircleArrowRight, CircleHelp, ExternalLink, FileText, FolderOpen, KeyRound, Languages, LoaderCircle, Mic, Power, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { errorMessage, translator } from "../i18n";
-import { type AppLanguage, type AppSettings, type BootstrapState, type MicrophoneProbe, type CatalogModel, type ApiKeyStatus } from "../types";
+import { type AppLanguage, type AppSettings, type BootstrapState, type MicrophoneProbe, type CatalogModelOption, type ApiKeyStatus } from "../types";
 import { type ToastHandler } from "../ui-types";
 import { formatShortcut } from "../lib/presentation";
 import { SettingsSection, SettingRow, Toggle, LanguagePicker, StorageControls, InterfaceLanguageButtons } from "../components/SettingsControls";
@@ -18,7 +18,7 @@ import { ApiKeyHealth } from "../components/ApiKeyHealth";
 const SUPPORT_EMAIL_URL = "mailto:support@aidoo.bg";
 
 export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToast, onOpenOnboarding, models, modelLoading }: {
-  models: CatalogModel[];
+  models: CatalogModelOption[];
   modelLoading: boolean;
   data: BootstrapState;
   language: AppLanguage;

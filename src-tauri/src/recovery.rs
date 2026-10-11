@@ -260,6 +260,7 @@ pub(super) fn retain_failed_recording(
         retryable,
         completed_text,
         transcription_model: None,
+        transcription_language: None,
     })
 }
 
@@ -300,6 +301,7 @@ fn retain_history_recording_copy(
         retryable,
         completed_text,
         transcription_model: None,
+        transcription_language: None,
     })
 }
 
@@ -637,11 +639,13 @@ pub(super) fn set_failed_recording_retryability(
         failed.retryable = retryable;
         failed.completed_text = None;
         failed.error = error.into();
-        failed.transcription_model = state
-            .settings
-            .lock()
-            .ok()
-            .and_then(|s| s.model_details.clone());
+        if error == IN_FLIGHT_RECOVERY_ERROR {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "Настройките са заключени.")?;
+            snapshot_transcription_settings(failed, &settings);
+        }
         storage::save_failed_recording(failed).map_err(|storage_error| {
             format!("Recovery състоянието не можа да бъде запазено: {storage_error}")
         })?;
@@ -807,7 +811,7 @@ pub(super) async fn retranscribe_history_item(
             return Err(error);
         }
     };
-    pending.transcription_model = settings.model_details.clone();
+    snapshot_transcription_settings(&mut pending, &settings);
     let request_audio = PathBuf::from(&pending.path);
     if let Err(error) = store_failed_recording(&app, &state, pending) {
         set_error(&app, &error);
@@ -860,7 +864,16 @@ pub(super) async fn retranscribe_history_item(
     }
 }
 
-// Local completion retains the price/model of the already paid request, even if Settings changed.
+pub(super) fn snapshot_transcription_settings(
+    failed: &mut FailedRecording,
+    settings: &AppSettings,
+) {
+    failed.transcription_model = settings.model_details.clone();
+    failed.transcription_language = Some(settings.language.clone());
+}
+
+// Local completion retains the price/model/language of the already paid request,
+// even if Settings changed. Legacy metadata cannot prove the original language.
 pub(super) fn completed_recovery_settings(
     mut settings: AppSettings,
     failed: &FailedRecording,
@@ -870,6 +883,11 @@ pub(super) fn completed_recovery_settings(
         .model_details
         .as_ref()
         .map(|m| m.id.clone())
+        .unwrap_or_else(|| "unknown".into());
+    settings.language = failed
+        .transcription_language
+        .clone()
+        .filter(|language| crate::model_updates::language_supported(language))
         .unwrap_or_else(|| "unknown".into());
     settings
 }

@@ -275,6 +275,7 @@ fn newest_recovery_audio() -> Option<FailedRecording> {
         retryable,
         completed_text: None,
         transcription_model: None,
+        transcription_language: None,
     })
 }
 
@@ -648,6 +649,7 @@ mod tests {
             retryable,
             completed_text: completed_text.map(str::to_owned),
             transcription_model: None,
+            transcription_language: None,
         };
         assert_eq!(
             recovery_file_retryability(&format!("failed-dictation-retryable-{identifier}.flac")),

@@ -99,8 +99,10 @@ export interface CatalogModel {
   benefitBg: string;
   benefitEn: string;
   source: string;
+}
+export interface CatalogModelOption extends CatalogModel {
   available?: boolean | null;
   isNew?: boolean;
 }
-export interface CatalogReport { models: CatalogModel[]; catalogUpdated: boolean; }
+export interface CatalogReport { models: CatalogModelOption[]; catalogUpdated: boolean; }
 export interface ApiKeyStatus { phase: string; checkedAt: string | null; lastSuccessAt: string | null; }
