@@ -3,6 +3,8 @@ fn main() {
         "bootstrap",
         "overlay_bootstrap",
         "update_settings",
+        "check_model_update",
+        "accept_model_update",
         "save_api_key",
         "delete_api_key",
         "begin_shortcut_capture",

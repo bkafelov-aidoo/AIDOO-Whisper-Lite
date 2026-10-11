@@ -86,3 +86,11 @@ Installed acceptance after a separately requested installer: save a real short d
 - Verify representative Bulgarian and English microphone/OpenAI errors, Accessibility-denied clipboard fallback and VoiceOver announcements.
 - Configure the six Apple signing/notarization secrets in the private GitHub repository before relying on its release workflow. Local Keychain notarization is already validated.
 - Upload the exact audited 1.0.5 DMG and matching checksum to the AIDOO website together with the privacy, support and release-notes pages.
+
+## Source candidate — 2026-10-11: single model and startup recommendations
+
+- Economy/Maximum accuracy selection is removed; existing preferences migrate to `gpt-transcribe` unless a curated successor has been explicitly accepted. Language and vocabulary remain available in Settings and onboarding.
+- Main-window initialization performs one quiet native catalog check when a key is present. Compatible higher-ranked recommendations require OpenAI account availability and explicit bilingual-modal confirmation. Atomic consent survives restart; active operations, stale proposals and changed keys cannot approve a switch.
+- The public catalog was published independently on GitHub main at commit `4d89dd7a6de19f69ac14d9660cf122747ec109bc`; the exact raw startup URL was verified byte-for-byte. It contains only `gpt-transcribe`, so no real upgrade popup appears today. App source remains a local candidate.
+- Evidence: 71 Rust tests, strict all-target/all-feature Clippy, formatting, TypeScript, source/localization/release/macOS/website checks and production frontend build pass. Local HTTP mocks cover availability, restricted keys, duplicate checks, credential isolation and the actual selected-model upload. The modal and hook were checked in Bulgarian/English with test-only data for Later, Use and postponement during a simulated recording.
+- No paid API request, real microphone dictation, installed-runtime acceptance or new DMG. Existing release artifacts and tags remain preserved. No baseline is promoted.

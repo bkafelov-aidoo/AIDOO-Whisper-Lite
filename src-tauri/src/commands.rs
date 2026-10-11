@@ -70,6 +70,12 @@ pub(super) fn update_settings(
     let _operation = acquire_operation(&app, &state)?;
     let mut settings = settings;
     settings.normalize();
+    settings.model = state
+        .settings
+        .lock()
+        .map_err(|_| "Настройките са заключени.")?
+        .model
+        .clone();
     vocabulary::validate(&settings.vocabulary_terms)?;
     shortcuts::validate_settings(&settings)?;
     if settings.save_audio || settings.save_text {
@@ -103,6 +109,7 @@ pub(super) async fn save_api_key(
         .api_key
         .lock()
         .map_err(|_| "API key cache е заключен.")? = Some(key);
+    model_updates::invalidate_key(&state.model_updates);
     refresh_tray_menu(&app);
     Ok(())
 }
@@ -118,6 +125,7 @@ pub(super) fn delete_api_key(app: AppHandle, state: State<'_, AppState>) -> Resu
         .api_key
         .lock()
         .map_err(|_| "API key cache е заключен.")? = None;
+    model_updates::invalidate_key(&state.model_updates);
     refresh_tray_menu(&app);
     Ok(())
 }
@@ -735,4 +743,42 @@ pub(super) fn create_diagnostic_bundle(app: AppHandle) -> Result<String, String>
         storage::append_diagnostic(&format!("diagnostic directory sync failed: {error}"));
     }
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub(super) async fn check_model_update(app: AppHandle) -> Option<model_updates::ModelProposal> {
+    model_updates::check(&app).await
+}
+
+#[tauri::command]
+pub(super) fn accept_model_update(
+    model_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppSettings, String> {
+    let _operation = acquire_operation(&app, &state)?;
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Настройките са заключени.")?;
+    let mut pending = state
+        .model_updates
+        .proposal
+        .lock()
+        .map_err(|_| "Предложението е заключено.")?;
+    let proposal = pending
+        .as_ref()
+        .ok_or("Няма предложение за модел. / No model proposal is available.")?;
+    let choice = model_updates::accepted_choice(
+        proposal,
+        &model_id,
+        &settings,
+        state.model_updates.key_revision.load(Ordering::Acquire),
+    )?;
+    storage::save_model_choice(&choice)?;
+    settings.model = choice.id;
+    *pending = None;
+    let saved = settings.clone();
+    let _ = app.emit("settings:changed", &saved);
+    Ok(saved)
 }

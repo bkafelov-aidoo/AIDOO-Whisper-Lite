@@ -18,7 +18,7 @@ fn history_entry() -> TranscriptEntry {
         text: "text".into(),
         created_at: "2026-09-14T00:00:00Z".into(),
         duration_seconds: 1.0,
-        model: "gpt-4o-mini-transcribe".into(),
+        model: crate::models::TRANSCRIPTION_MODEL.into(),
         language: "bg".into(),
         audio_path: Some(
             "/Volumes/External/AIDOO/AIDOO-Whisper-2026-09-14_00-00-00-abcdef.flac".into(),

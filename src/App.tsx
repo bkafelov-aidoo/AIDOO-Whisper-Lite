@@ -12,6 +12,8 @@ import { Dashboard } from "./pages/Dashboard";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { Onboarding } from "./components/Onboarding";
+import { ModelUpdateDialog } from "./components/ModelUpdateDialog";
+import { useModelUpdate } from "./hooks/useModelUpdate";
 import { DeleteDialog } from "./components/DeleteDialog";
 import type { ToastTone } from "./ui-types";
 
@@ -85,6 +87,8 @@ export default function App() {
     window.addEventListener("focus", refreshOnFocus);
     return () => window.removeEventListener("focus", refreshOnFocus);
   }, [refresh]);
+
+  const modelUpdate = useModelUpdate(data?.hasApiKey ?? false, (settings) => setData((current) => current ? { ...current, settings } : current));
 
   const language = resolveLanguage(data?.settings.uiLanguage ?? "auto");
   languageRef.current = language;
@@ -254,6 +258,12 @@ export default function App() {
             }
           }}
         />
+      )}
+
+      {modelUpdate.proposal && !isBusy && !showOnboarding && !deleteTarget && data.settings.model !== modelUpdate.proposal.candidate.id && (
+        <ModelUpdateDialog proposal={modelUpdate.proposal} language={language} saving={modelUpdate.saving}
+          onLater={modelUpdate.dismiss}
+          onAccept={() => { void modelUpdate.accept().then((changed) => { if (changed) showToast(t("modelUpdated")); }).catch(() => showToast(t("modelUpdateFailed"), "error")); }} />
       )}
 
       {toast && <div className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"} aria-live={toast.tone === "error" ? "assertive" : "polite"}>{toast.tone === "success" ? <Check /> : <AlertCircle />}{toast.message}</div>}

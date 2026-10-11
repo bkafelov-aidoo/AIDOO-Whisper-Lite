@@ -108,6 +108,7 @@ pub fn load_settings() -> AppSettings {
     let mut settings: AppSettings =
         read_json(&settings_path(), MAX_SETTINGS_JSON_BYTES).unwrap_or_default();
     settings.normalize();
+    settings.model = crate::model_updates::approved_model_id();
     settings
 }
 
@@ -536,6 +537,15 @@ fn quarantine_invalid_json(path: &Path, reason: &str) {
 fn write_json_atomic<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
     write_private_bytes_atomic(path, &bytes)
+}
+
+// Independent atomic consent record: ordinary settings saves cannot replace it.
+pub(crate) fn load_model_choice() -> Option<crate::model_updates::CatalogModel> {
+    read_json::<crate::model_updates::CatalogModel>(&data_dir().join("model-choice.json"), 8192)
+        .filter(crate::model_updates::CatalogModel::valid)
+}
+pub(crate) fn save_model_choice(model: &crate::model_updates::CatalogModel) -> Result<(), String> {
+    write_json_atomic(&data_dir().join("model-choice.json"), model)
 }
 
 #[cfg(test)]

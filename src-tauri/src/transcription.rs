@@ -1,4 +1,4 @@
-use crate::models::{AppSettings, ACCURACY_MODEL};
+use crate::models::AppSettings;
 use futures_util::{StreamExt, TryStreamExt};
 use reqwest::multipart::{Form, Part};
 use serde::Deserialize;
@@ -229,22 +229,13 @@ async fn transcribe_with_client(
         .text("model", settings.model.clone())
         .text("response_format", "json");
     if settings.language != "auto" {
-        let field = if settings.model == ACCURACY_MODEL {
-            "languages[]"
-        } else {
-            "language"
-        };
-        form = form.text(field, settings.language.clone());
+        form = form.text("languages[]", settings.language.clone());
     }
     if settings.vocabulary_enabled {
         let terms = crate::vocabulary::normalize(&settings.vocabulary_terms);
         crate::vocabulary::validate(&terms).map_err(TranscriptionFailure::before_request)?;
-        if settings.model == ACCURACY_MODEL {
-            for term in terms {
-                form = form.text("keywords[]", term);
-            }
-        } else if !terms.is_empty() {
-            form = form.text("prompt", terms.join(", "));
+        for term in terms {
+            form = form.text("keywords[]", term);
         }
     }
     let response = client

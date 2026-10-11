@@ -169,17 +169,7 @@ select { min-width: 190px; }
 .toggle span { display: block; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.24); transition: .18s; }
 .toggle.on { background: var(--accent); }
 .toggle.on span { transform: translateX(16px); }
-.toggle:disabled, .model-option:disabled { opacity: .48; cursor: default; }
-.model-language-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.model-option { min-height: 146px; padding: 14px; border: 1px solid #d3dde7; border-radius: 13px; background: #fafbfd; color: #314a61; display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto 1fr auto; column-gap: 10px; text-align: left; cursor: pointer; }
-.model-option > span { grid-row: 1 / 5; width: 33px; height: 33px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
-.model-option > span svg { width: 18px; }
-.model-level-icon line { stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
-.model-level-icon .inactive { opacity: .18; }
-.model-option strong { font-size: 13px; }
-.model-option small { color: var(--muted); font-size: 11px; line-height: 1.45; }
-.model-option em { align-self: end; color: #246aa9; font-size: 10px; font-style: normal; font-weight: 650; }
-.model-option.selected { border-color: #629fe0; background: #edf6ff; box-shadow: inset 0 0 0 1px #629fe0; }
+.toggle:disabled { opacity: .48; cursor: default; }
 .language-select { grid-column: 1 / -1; margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 18px; color: #374f66; font-size: 12px; font-weight: 650; }
 .storage-controls > .setting-row { padding-left: 1px; padding-right: 1px; }
 .folder-picker { min-height: 68px; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
@@ -332,3 +322,11 @@ body[data-window="overlay"] { overflow: hidden; }
   .hero-action { grid-column: 2; justify-self: start; }
   .api-row { grid-template-columns: 1fr; }
 }
+
+.model-update-dialog { text-align: left; gap: 14px; }
+.model-update-dialog h2 { padding-right: 20px; }
+.model-update-dialog p { max-height: none; overflow: visible; margin: 0; }
+.model-update-comparison { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; overflow-wrap: anywhere; }
+.model-update-comparison svg { width: 18px; color: var(--muted); flex-shrink: 0; }
+.model-update-price { display: flex; flex-direction: column; gap: 6px; }
+.model-update-price small { color: var(--muted); line-height: 1.5; }

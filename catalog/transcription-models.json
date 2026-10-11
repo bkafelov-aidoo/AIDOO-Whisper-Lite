@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "models": [
+    {
+      "id": "gpt-transcribe",
+      "rank": 1,
+      "protocol": "gpt-transcribe-v1",
+      "estimatedUsdPerMinute": 0.0045,
+      "languages": ["auto", "bg", "en", "de", "es", "fr", "it"],
+      "benefitBg": "Точна транскрипция с езикови подсказки и дентален речник.",
+      "benefitEn": "Accurate transcription with language hints and a dental vocabulary.",
+      "source": "https://developers.openai.com/api/docs/models/gpt-transcribe"
+    }
+  ]
+}

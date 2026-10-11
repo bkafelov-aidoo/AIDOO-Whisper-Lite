@@ -8,7 +8,7 @@ import { errorMessage, translator } from "../i18n";
 import { type AppLanguage, type AppSettings, type BootstrapState, type MicrophoneProbe } from "../types";
 import { type ToastHandler } from "../ui-types";
 import { formatShortcut } from "../lib/presentation";
-import { SettingsSection, SettingRow, Toggle, ModelPicker, StorageControls } from "../components/SettingsControls";
+import { SettingsSection, SettingRow, Toggle, LanguagePicker, StorageControls } from "../components/SettingsControls";
 import { useShortcutCapture } from "../hooks/useShortcutCapture";
 import { VocabularyEditor, vocabularyIssue } from "../components/VocabularyEditor";
 
@@ -73,7 +73,7 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
       {data.hasApiKey && <button className="text-button danger" disabled={controlsDisabled} onClick={async () => { setKeyBusy(true); try { await invoke("delete_api_key"); await onRefresh(); onToast(t("deleted")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{t("removeKey")}</button>}
     </SettingsSection>
     <SettingsSection icon={<Languages />} title={t("modelLanguage")}>
-      <ModelPicker settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />
+      <LanguagePicker settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />
       <SettingRow title={t("interfaceLanguage")}><select aria-label={t("interfaceLanguage")} value={draft.uiLanguage} disabled={controlsDisabled} onChange={(event) => setDraft({ ...draft, uiLanguage: event.target.value as AppSettings["uiLanguage"] })}><option value="auto">{t("automatic")}</option><option value="bg">Български</option><option value="en">English</option></select></SettingRow>
     </SettingsSection>
     <VocabularyEditor settings={draft} language={language} disabled={controlsDisabled} onChange={setDraft} />

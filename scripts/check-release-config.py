@@ -180,16 +180,14 @@ def main() -> int:
         errors.append("The frontend must not link users to private source-repository Issues")
 
     expected_transcription_models = {
-        "gpt-4o-mini-transcribe": "$0.003",
         "gpt-transcribe": "$0.0045",
     }
     model_source = (ROOT / "src-tauri/src/models.rs").read_text()
     type_source = (ROOT / "src/types.ts").read_text()
-    translation_source = (ROOT / "src/i18n.ts").read_text()
     model_documentation = (ROOT / "docs/MODELS.md").read_text()
     rust_models = set(
         re.findall(
-            r'^pub const (?:ECONOMY|ACCURACY)_MODEL: &str = "([^"]+)";$',
+            r'^pub const TRANSCRIPTION_MODEL: &str = "([^"]+)";$',
             model_source,
             re.MULTILINE,
         )
@@ -198,13 +196,16 @@ def main() -> int:
         re.findall(r'"(gpt-[a-z0-9.-]*transcribe[a-z0-9.-]*)"', frontend_source)
     )
     typed_models = set(
-        re.findall(r'"(gpt-[a-z0-9.-]*transcribe[a-z0-9.-]*)"', type_source)
+        re.findall(r'"(gpt-[a-z0-9.-]*transcribe[a-z0-9.-]*)"', type_source.split("export interface TranscriptEntry")[0])
     )
+    if frontend_models:
+        errors.append("Model selection controls must not be present in the frontend")
+    if typed_models or "model: string;" not in type_source:
+        errors.append("Frontend must use the native-approved model ID without a model picker")
     expected_model_ids = set(expected_transcription_models)
     for source_name, actual_models in (
         ("native model constants", rust_models),
-        ("frontend model controls", frontend_models),
-        ("frontend model type", typed_models),
+
     ):
         if actual_models != expected_model_ids:
             errors.append(
@@ -213,10 +214,8 @@ def main() -> int:
     for model, price in expected_transcription_models.items():
         if model not in model_documentation or price not in model_documentation:
             errors.append(f"Model documentation is missing {model} at {price}/minute")
-        if price not in translation_source or price not in frontend_source:
-            errors.append(f"Interface price copy is missing the audited {price}/minute value")
+
     for official_model_page in (
-        "https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe",
         "https://developers.openai.com/api/docs/models/gpt-transcribe",
         "https://developers.openai.com/api/docs/pricing",
     ):
@@ -229,18 +228,21 @@ def main() -> int:
         path.read_text() for path in (ROOT / "src-tauri/src").glob("*.rs")
     )
     runtime_https_urls = set(re.findall(r'"(https://[^"\s]+)"', runtime_sources))
+    # The formatted official model-page URL is evidence metadata, never fetched.
+    runtime_https_urls.discard("https://developers.openai.com/api/docs/models/{}")
     expected_runtime_https_urls = {
         "https://api.openai.com/v1/models",
         "https://api.openai.com/v1/audio/transcriptions",
+        "https://raw.githubusercontent.com/bkafelov-aidoo/AIDOO-Whisper-Lite/main/catalog/transcription-models.json",
     }
     if runtime_https_urls != expected_runtime_https_urls:
         errors.append(
             f"Native runtime HTTPS destinations differ: {sorted(runtime_https_urls)}"
         )
-    if runtime_sources.count(".https_only(true)") != 2:
-        errors.append("Both OpenAI clients must reject non-HTTPS requests")
-    if runtime_sources.count(".redirect(reqwest::redirect::Policy::none())") != 2:
-        errors.append("Both OpenAI clients must reject HTTP redirects")
+    if runtime_sources.count(".https_only(true)") != 3:
+        errors.append("All native network clients must reject non-HTTPS requests")
+    if runtime_sources.count(".redirect(reqwest::redirect::Policy::none())") != 3:
+        errors.append("All native network clients must reject HTTP redirects")
     javascript_dependencies = {
         **package.get("dependencies", {}),
         **package.get("devDependencies", {}),
@@ -278,6 +280,8 @@ def main() -> int:
         "autostart:default",
         "allow-bootstrap",
         "allow-update-settings",
+        "allow-check-model-update",
+        "allow-accept-model-update",
         "allow-save-api-key",
         "allow-delete-api-key",
         "allow-begin-shortcut-capture",

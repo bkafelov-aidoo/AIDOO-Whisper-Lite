@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub const ECONOMY_MODEL: &str = "gpt-4o-mini-transcribe";
-pub const ACCURACY_MODEL: &str = "gpt-transcribe";
+pub const TRANSCRIPTION_MODEL: &str = "gpt-transcribe";
 const SUPPORTED_LANGUAGES: &[&str] = &["auto", "bg", "en", "de", "es", "fr", "it"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -50,7 +49,7 @@ impl Default for AppSettings {
             onboarding_complete: false,
             ui_language: "auto".into(),
             language: "bg".into(),
-            model: ECONOMY_MODEL.into(),
+            model: TRANSCRIPTION_MODEL.into(),
             vocabulary_enabled: true,
             vocabulary_terms: Vec::new(),
             auto_paste: true,
@@ -69,9 +68,7 @@ impl Default for AppSettings {
 impl AppSettings {
     pub fn normalize(&mut self) {
         self.vocabulary_terms = crate::vocabulary::normalize(&self.vocabulary_terms);
-        if !matches!(self.model.as_str(), ECONOMY_MODEL | ACCURACY_MODEL) {
-            self.model = ECONOMY_MODEL.into();
-        }
+        self.model = TRANSCRIPTION_MODEL.into();
         if !SUPPORTED_LANGUAGES.contains(&self.language.as_str()) {
             self.language = "auto".into();
         }
@@ -95,19 +92,23 @@ impl AppSettings {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppSettings, FailedRecording, ACCURACY_MODEL, ECONOMY_MODEL};
+    use super::{AppSettings, FailedRecording, TRANSCRIPTION_MODEL};
 
     #[test]
-    fn production_model_aliases_remain_stable() {
-        assert_eq!(ECONOMY_MODEL, "gpt-4o-mini-transcribe");
-        assert_eq!(ACCURACY_MODEL, "gpt-transcribe");
-
-        let mut settings = AppSettings {
-            model: ACCURACY_MODEL.into(),
-            ..AppSettings::default()
-        };
-        settings.normalize();
-        assert_eq!(settings.model, ACCURACY_MODEL);
+    fn old_settings_migrate_to_the_single_transcription_model() {
+        for old_model in ["gpt-4o-mini-transcribe", "gpt-transcribe", "unknown-model"] {
+            let mut settings: AppSettings = serde_json::from_value(serde_json::json!({
+                "model": old_model, "language": "en", "autoPaste": false,
+                "vocabularyTerms": ["Brinker"]
+            }))
+            .unwrap();
+            settings.normalize();
+            assert_eq!(settings.model, TRANSCRIPTION_MODEL);
+            assert_eq!(settings.language, "en");
+            assert!(!settings.auto_paste);
+            assert_eq!(settings.vocabulary_terms, vec!["Brinker"]);
+        }
+        assert_eq!(AppSettings::default().model, TRANSCRIPTION_MODEL);
     }
 
     #[test]
@@ -139,7 +140,7 @@ mod tests {
 
         settings.normalize();
 
-        assert_eq!(settings.model, ECONOMY_MODEL);
+        assert_eq!(settings.model, TRANSCRIPTION_MODEL);
         assert_eq!(settings.language, "auto");
         assert_eq!(settings.ui_language, "auto");
         assert_eq!(settings.output_directory, None);

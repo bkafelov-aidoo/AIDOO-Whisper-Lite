@@ -4,7 +4,7 @@ export interface AppSettings {
   onboardingComplete: boolean;
   uiLanguage: "auto" | "bg" | "en";
   language: string;
-  model: "gpt-4o-mini-transcribe" | "gpt-transcribe";
+  model: string;
   vocabularyEnabled: boolean;
   vocabularyTerms: string[];
   autoPaste: boolean;
@@ -84,3 +84,19 @@ export interface TranscriptionCompleted {
 }
 
 export type AppLanguage = "bg" | "en";
+
+export interface CatalogModel {
+  id: string;
+  rank: number;
+  protocol: "gpt-transcribe-v1";
+  estimatedUsdPerMinute: number;
+  languages: string[];
+  benefitBg: string;
+  benefitEn: string;
+  source: string;
+}
+export interface ModelProposal {
+  currentModel: string;
+  currentUsdPerMinute: number;
+  candidate: CatalogModel;
+}

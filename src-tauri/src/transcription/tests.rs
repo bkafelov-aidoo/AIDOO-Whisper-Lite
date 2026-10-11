@@ -87,7 +87,7 @@ fn read_request(stream: &mut std::net::TcpStream) -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn models_receive_correct_dictionary_and_language_fields_on_one_reused_connection() {
+async fn single_model_receives_dictionary_and_language_fields_on_one_reused_connection() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!(
         "http://{}/v1/audio/transcriptions",
@@ -110,10 +110,11 @@ async fn models_receive_correct_dictionary_and_language_fields_on_one_reused_con
     });
     let path = temporary_audio();
     let client = local_client(Duration::from_secs(3));
-    for model in [crate::models::ECONOMY_MODEL, crate::models::ACCURACY_MODEL] {
+    for language in ["bg", "auto"] {
         for enabled in [true, false] {
             let settings = AppSettings {
-                model: model.into(),
+                language: language.into(),
+                model: crate::models::TRANSCRIPTION_MODEL.into(),
                 vocabulary_enabled: enabled,
                 vocabulary_terms: vec![" кофердам ".into(), "Кофердам".into(), "".into()],
                 ..AppSettings::default()
@@ -130,17 +131,11 @@ async fn models_receive_correct_dictionary_and_language_fields_on_one_reused_con
     for (index, request) in requests.iter().enumerate() {
         assert!(!request.contains("name=\"stream\""));
         assert!(request.contains("name=\"response_format\"\r\n\r\njson"));
-        let accuracy = index >= 2;
-        assert_eq!(request.contains("name=\"languages[]\""), accuracy);
-        assert_eq!(request.contains("name=\"language\""), !accuracy);
-        assert_eq!(
-            request.contains("name=\"keywords[]\""),
-            accuracy && index % 2 == 0
-        );
-        assert_eq!(
-            request.contains("name=\"prompt\""),
-            !accuracy && index % 2 == 0
-        );
+        assert!(request.contains("name=\"model\"\r\n\r\ngpt-transcribe"));
+        assert_eq!(request.contains("name=\"languages[]\""), index < 2);
+        assert!(!request.contains("name=\"language\""));
+        assert_eq!(request.contains("name=\"keywords[]\""), index % 2 == 0);
+        assert!(!request.contains("name=\"prompt\""));
         assert_eq!(
             request.matches("кофердам").count(),
             usize::from(index % 2 == 0)
@@ -334,4 +329,63 @@ fn wav_is_encoded_as_flac() {
     encode_wav_to_flac(&wav, &flac).unwrap();
     assert!(std::fs::read(&flac).unwrap().starts_with(b"fLaC"));
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn accepted_successor_is_used_in_the_actual_upload() {
+    let directory =
+        std::env::temp_dir().join(format!("lite-successor-upload-{}", uuid::Uuid::new_v4()));
+    crate::storage::with_test_data_dir(directory.clone(), || {
+        let mut choice = crate::model_updates::default_model();
+        choice.id = "gpt-test-transcribe".into();
+        choice.rank = 2;
+        choice.source = format!(
+            "https://developers.openai.com/api/docs/models/{}",
+            choice.id
+        );
+        crate::storage::save_model_choice(&choice).unwrap();
+        let settings = crate::storage::load_settings();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!(
+            "http://{}/v1/audio/transcriptions",
+            listener.local_addr().unwrap()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let request = String::from_utf8(read_request(&mut socket)).unwrap();
+            let body = r#"{"text":"result"}"#;
+            write!(
+                socket,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+            request
+        });
+        let audio = temporary_audio();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = runtime
+            .block_on(transcribe_with_client(
+                &audio,
+                "sk-test-only",
+                &settings,
+                None,
+                &local_client(Duration::from_secs(3)),
+                &endpoint,
+            ))
+            .unwrap();
+        assert_eq!(result, "result");
+        let request = server.join().unwrap();
+        assert!(request.contains("name=\"model\"\r\n\r\ngpt-test-transcribe"));
+        assert!(request.contains("name=\"languages[]\""));
+        assert_eq!(settings.model, choice.id);
+        std::fs::remove_file(audio).unwrap();
+    });
+    std::fs::remove_dir_all(directory).unwrap();
 }
