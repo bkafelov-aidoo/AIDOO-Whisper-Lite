@@ -110,3 +110,7 @@ The candidate separates persisted CatalogModel from account CatalogModelOption, 
 Additional reproduced fixes: removing a key during discovery stops loading and ignores the late response; the first Escape closes only the language list inside Onboarding, with the second retaining dialog dismissal; free model-list verification cannot revive Working after a paid-request failure; local preflight failures emit no key-health change; completed local recovery preserves the original language as well as model/rate, with unknown language for legacy metadata; raw Intl language codes fall back to catalog names.
 
 All changes are a source candidate. Existing `lite-v1.0.9` and its signed/notarized installer are preserved; this request creates no new installer or promoted working baseline. Regression evidence is under `release/development-evidence/settings-bug-20261011/`. Tests use local fixtures without real OpenAI credentials, microphone audio or paid requests.
+
+## Requested corrected installer — 1.0.10, 2026-10-11
+
+The user explicitly requested one corrected Mac ARM DMG containing the seven Settings/key/language/recovery fixes. Version 1.0.10 is prepared from the verified `bcaa0ca` source, with all older installers and immutable release tags preserved. The release pipeline repeats the automated checks and independently audits the exact signed/notarized artifact; results are recorded under `release/development-evidence/dmg-1.0.10/`. Packaging does not establish installed microphone/API dictation acceptance or promote a working baseline.
