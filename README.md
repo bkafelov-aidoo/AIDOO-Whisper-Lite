@@ -2,7 +2,7 @@
 
 A focused macOS voice typing app. Hold a keyboard shortcut, speak, and release it to send the recording to the selected OpenAI transcription model. The result stays in the clipboard and can be pasted automatically into the active application.
 
-Version 1.0.10 includes the model/language/key-status/cost features and the Settings save, key-status, language-list and recovery fixes. Earlier installers remain preserved.
+Version 1.0.11 includes the model/language/key-status/cost features and the Settings save, key-status, language-list and recovery fixes. Earlier installers remain preserved.
 
 ## Product behavior
 

@@ -114,3 +114,7 @@ All changes are a source candidate. Existing `lite-v1.0.9` and its signed/notari
 ## Requested corrected installer — 1.0.10, 2026-10-11
 
 The user explicitly requested one corrected Mac ARM DMG containing the seven Settings/key/language/recovery fixes. Version 1.0.10 is prepared from the verified `bcaa0ca` source, with all older installers and immutable release tags preserved. The release pipeline repeats the automated checks and independently audits the exact signed/notarized artifact; results are recorded under `release/development-evidence/dmg-1.0.10/`. Packaging does not establish installed microphone/API dictation acceptance or promote a working baseline.
+
+## Requested installer — 1.0.11, 2026-10-16
+
+The user requested one new Mac ARM DMG of the current Lite source. Version 1.0.11 contains the same application behavior as 1.0.10; only release metadata and release notes change. Existing release installers and immutable tags remain preserved. The release pipeline repeats source checks, native tests, signing, app-first Apple notarization and the mounted-artifact audit. Exact results are recorded under `release/development-evidence/dmg-1.0.11/`. Packaging does not establish installed microphone/API acceptance or promote a working baseline.
