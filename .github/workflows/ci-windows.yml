@@ -170,6 +170,14 @@ jobs:
         run: npm run bundle:windows:signed
       - name: Verify signatures, install, launch and uninstall
         run: ./scripts/test-windows-installer.ps1 -RequireSignature
+      - name: Retain startup failure codes only
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Windows-startup-check-diagnostics
+          if-no-files-found: ignore
+          retention-days: 14
+          path: release/windows-ci/startup-failure.json
       - name: Upload the verified signed installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

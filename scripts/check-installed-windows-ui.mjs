@@ -2,19 +2,28 @@
 // The debugging port is enabled by the test process, never by the application.
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { installedMainTarget } from "./windows-webview-target.mjs";
 
 const output = process.argv[2];
-const deadline = Date.now() + 30_000;
+// Measured cold WebView2 startup reached 47 seconds on a fresh CI runner.
+const started = Date.now();
+const deadline = started + 90_000;
 const pause = () => new Promise((resolve) => setTimeout(resolve, 500));
 let page;
+let endpointFailure = null;
 while (!page && Date.now() < deadline) {
   try {
-    const targets = await (await fetch("http://127.0.0.1:9222/json/list")).json();
-    page = targets.find((target) => target.type === "page" && !target.url.includes("window=overlay"));
-  } catch { /* WebView2 may still be starting. */ }
+    const response = await fetch("http://127.0.0.1:9222/json/list", { signal: AbortSignal.timeout(2000) });
+    const targets = await response.json();
+    endpointFailure = { httpStatus: response.status, targetCount: Array.isArray(targets) ? targets.length : 0 };
+    page = installedMainTarget(targets);
+  } catch (reason) { endpointFailure = { errorKind: reason.name, code: reason.cause?.code ?? null }; }
   if (!page) await pause();
 }
-if (!page) throw new Error("The installed WebView2 did not open its test endpoint.");
+if (!page) {
+  await writeFile(join(output, "startup-failure.json"), JSON.stringify({ phase: "main-target", elapsedMs: Date.now() - started, endpointFailure }, null, 2));
+  throw new Error("The installed WebView2 did not open its test endpoint.");
+}
 const socket = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => {
   socket.addEventListener("open", resolve, { once: true });
@@ -60,7 +69,10 @@ try {
   await writeFile(join(output, "installed-ui.json"), JSON.stringify({ ...state, errors }, null, 2));
   const screenshot = await call("Page.captureScreenshot", { format: "png" });
   await writeFile(join(output, "installed-webview.png"), Buffer.from(screenshot.data, "base64"));
-  if (!state.ready) throw new Error(`The installed interface did not load: ${JSON.stringify({ state, errors })}`);
+  if (!state.ready) {
+    await writeFile(join(output, "startup-failure.json"), JSON.stringify({ phase: "interface", elapsedMs: Date.now() - started, ready: false }, null, 2));
+    throw new Error("The installed interface did not load within its bounded startup check.");
+  }
   if (state.platform !== "windows") throw new Error("The installed interface did not select Windows.");
   if (!state.shortcuts.includes("F8")) throw new Error("The installed interface did not display F8.");
   if (state.shortcuts.some((shortcut) => /[⌘⌥⇧⌃]/.test(shortcut))) throw new Error("The Windows interface displayed Mac keyboard symbols.");

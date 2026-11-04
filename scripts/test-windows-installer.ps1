@@ -45,15 +45,7 @@ try {
     $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
     $installedVersion = '{0}.{1}.{2}' -f $versionInfo.ProductMajorPart, $versionInfo.ProductMinorPart, $versionInfo.ProductBuildPart
     if ($installedVersion -ne $expectedVersion) { throw "Installed app version $installedVersion differs from $expectedVersion." }
-    Add-Type -AssemblyName System.Drawing
-    Add-Type -AssemblyName System.Windows.Forms
-    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $bitmap = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-    $bitmap.Save((Join-Path $output 'installed-app.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-    $graphics.Dispose()
-    $bitmap.Dispose()
+    # The CDP probe saves only this application window, not the entire desktop.
     # The first-run settings file contains no API key and no customer data.
     $settings = Join-Path $env:LOCALAPPDATA 'AIDOO/Whisper Lite/settings.json'
     if (Test-Path $settings) {
