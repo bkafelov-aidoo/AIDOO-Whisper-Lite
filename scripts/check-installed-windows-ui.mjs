@@ -2,10 +2,13 @@
 // The debugging port is enabled by the test process, never by the application.
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { installedMainTarget } from "./windows-webview-target.mjs";
 
 const output = process.argv[2];
 const started = Date.now();
-const deadline = Date.now() + 30_000;
+// The first WebView2 initialization took 24 seconds in CI and exceeded 30 in a
+// signed build. Keep one bounded cold-start budget while requiring the real UI.
+const deadline = Date.now() + 90_000;
 const kind = (value) => {
   try {
     const url = new URL(value);
@@ -21,10 +24,10 @@ let endpointAttempts = 0;
 while (!page && Date.now() < deadline) {
   endpointAttempts++;
   try {
-    const response = await fetch("http://127.0.0.1:9222/json/list");
+    const response = await fetch("http://127.0.0.1:9222/json/list", { signal: AbortSignal.timeout(2000) });
     const targets = await response.json();
     lastEndpointObservation = { status: response.status, array: Array.isArray(targets), targets: Array.isArray(targets) ? targets.map(target => ({ type: target.type, kind: kind(target.url) })) : [] };
-    page = targets.find((target) => target.type === "page" && !target.url.includes("window=overlay"));
+    page = installedMainTarget(targets);
   } catch (reason) { lastEndpointObservation = { errorKind: reason.name, code: reason.cause?.code ?? null }; }
   if (!page) await pause();
 }
