@@ -43,8 +43,7 @@ export function formatDate(value: string, language: AppLanguage) {
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(language === "bg" ? "bg-BG" : "en-US", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
-export function modelLabel(model: string, language: AppLanguage) {
-  if (model === "gpt-4o-mini-transcribe") return language === "bg" ? "Икономичен" : "Economy";
-  if (model === "gpt-transcribe") return language === "bg" ? "Максимална точност" : "Maximum accuracy";
-  return model;
+
+export function formatUsd(amount: number, language: AppLanguage) {
+  return new Intl.NumberFormat(language === "bg" ? "bg-BG" : "en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 6 }).format(amount);
 }

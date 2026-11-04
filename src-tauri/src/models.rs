@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub const ECONOMY_MODEL: &str = "gpt-4o-mini-transcribe";
-pub const ACCURACY_MODEL: &str = "gpt-transcribe";
-const SUPPORTED_LANGUAGES: &[&str] = &["auto", "bg", "en", "de", "es", "fr", "it"];
+pub const TRANSCRIPTION_MODEL: &str = "gpt-transcribe";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -31,6 +29,10 @@ pub struct AppSettings {
     pub ui_language: String,
     pub language: String,
     pub model: String,
+    #[serde(default)]
+    pub model_details: Option<crate::model_updates::CatalogModel>,
+    pub vocabulary_enabled: bool,
+    pub vocabulary_terms: Vec<String>,
     pub auto_paste: bool,
     pub save_audio: bool,
     pub save_text: bool,
@@ -56,7 +58,10 @@ impl Default for AppSettings {
             onboarding_complete: false,
             ui_language: "auto".into(),
             language: "bg".into(),
-            model: ECONOMY_MODEL.into(),
+            model: TRANSCRIPTION_MODEL.into(),
+            model_details: Some(crate::model_updates::default_model()),
+            vocabulary_enabled: true,
+            vocabulary_terms: Vec::new(),
             auto_paste: true,
             save_audio: true,
             save_text: true,
@@ -72,10 +77,17 @@ impl Default for AppSettings {
 
 impl AppSettings {
     pub fn normalize(&mut self) {
-        if !matches!(self.model.as_str(), ECONOMY_MODEL | ACCURACY_MODEL) {
-            self.model = ECONOMY_MODEL.into();
+        self.vocabulary_terms = crate::vocabulary::normalize(&self.vocabulary_terms);
+        self.model_details = self
+            .model_details
+            .take()
+            .filter(|m| m.id == self.model && m.valid())
+            .or_else(|| crate::model_updates::bundled_model(&self.model));
+        if self.model_details.is_none() {
+            self.model = TRANSCRIPTION_MODEL.into();
+            self.model_details = Some(crate::model_updates::default_model());
         }
-        if !SUPPORTED_LANGUAGES.contains(&self.language.as_str()) {
+        if !crate::model_updates::language_supported(&self.language) {
             self.language = "auto".into();
         }
         if !matches!(self.ui_language.as_str(), "auto" | "bg" | "en") {
@@ -98,19 +110,46 @@ impl AppSettings {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppSettings, FailedRecording, ACCURACY_MODEL, ECONOMY_MODEL};
+    use super::{AppSettings, FailedRecording, TRANSCRIPTION_MODEL};
 
     #[test]
-    fn production_model_aliases_remain_stable() {
-        assert_eq!(ECONOMY_MODEL, "gpt-4o-mini-transcribe");
-        assert_eq!(ACCURACY_MODEL, "gpt-transcribe");
+    fn old_settings_migrate_to_the_single_transcription_model() {
+        for old_model in ["gpt-4o-mini-transcribe", "gpt-transcribe", "unknown-model"] {
+            let mut settings: AppSettings = serde_json::from_value(serde_json::json!({
+                "model": old_model, "language": "en", "autoPaste": false,
+                "vocabularyTerms": ["Brinker"]
+            }))
+            .unwrap();
+            settings.normalize();
+            assert_eq!(
+                settings.model,
+                if old_model == "unknown-model" {
+                    TRANSCRIPTION_MODEL
+                } else {
+                    old_model
+                }
+            );
+            assert_eq!(settings.language, "en");
+            assert!(!settings.auto_paste);
+            assert_eq!(settings.vocabulary_terms, vec!["Brinker"]);
+        }
+        assert_eq!(AppSettings::default().model, TRANSCRIPTION_MODEL);
+    }
 
+    #[test]
+    fn vocabulary_survives_settings_round_trip_and_old_settings_load_without_hints() {
+        let legacy: AppSettings = serde_json::from_str(r#"{"model":"gpt-transcribe"}"#).unwrap();
+        assert!(legacy.vocabulary_terms.is_empty());
         let mut settings = AppSettings {
-            model: ACCURACY_MODEL.into(),
+            vocabulary_enabled: false,
+            vocabulary_terms: vec![" кофердам ".into(), "Кофердам".into(), "".into()],
             ..AppSettings::default()
         };
         settings.normalize();
-        assert_eq!(settings.model, ACCURACY_MODEL);
+        let loaded: AppSettings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert!(!loaded.vocabulary_enabled);
+        assert_eq!(loaded.vocabulary_terms, vec!["кофердам"]);
     }
 
     #[test]
@@ -126,7 +165,7 @@ mod tests {
 
         settings.normalize();
 
-        assert_eq!(settings.model, ECONOMY_MODEL);
+        assert_eq!(settings.model, TRANSCRIPTION_MODEL);
         assert_eq!(settings.language, "auto");
         assert_eq!(settings.ui_language, "auto");
         assert_eq!(settings.output_directory, None);
@@ -145,6 +184,8 @@ mod tests {
 
         assert!(recording.retryable);
         assert!(recording.completed_text.is_none());
+        assert!(recording.transcription_model.is_none());
+        assert!(recording.transcription_language.is_none());
     }
 }
 
@@ -159,6 +200,8 @@ pub struct TranscriptEntry {
     pub language: String,
     pub audio_path: Option<String>,
     pub text_path: Option<String>,
+    #[serde(default)]
+    pub cost: Option<crate::transcription_cost::TranscriptionCost>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +215,10 @@ pub struct FailedRecording {
     pub retryable: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_text: Option<String>,
+    #[serde(default)]
+    pub transcription_model: Option<crate::model_updates::CatalogModel>,
+    #[serde(default)]
+    pub transcription_language: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -213,6 +260,7 @@ pub struct BootstrapState {
     pub failed_recording: Option<FailedRecording>,
     pub microphones: Vec<String>,
     pub has_api_key: bool,
+    pub api_key_status: crate::api_key_status::ApiKeyStatus,
     pub accessibility_granted: bool,
     pub app_version: String,
     pub default_output_directory: String,

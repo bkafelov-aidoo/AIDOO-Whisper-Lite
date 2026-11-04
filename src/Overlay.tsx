@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { createEventScope } from "./lib/event-scope";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { Check, CircleAlert, LoaderCircle, Mic, Square } from "lucide-react";
+import { Check, CircleAlert, GripVertical, LoaderCircle, Mic, Square } from "lucide-react";
 import type { AppSettings, OverlayBootstrapState, RecordingProgress, RecordingSnapshot } from "./types";
 import { errorMessage, progressLabel, resolveLanguage } from "./i18n";
 
@@ -26,6 +27,7 @@ const stateText = {
     release: "Отпуснете shortcut-а за край",
     stop: "Стоп",
     stopTitle: "Спри записа и започни транскрипцията",
+    move: "Влачете, за да преместите прозореца",
   },
   en: {
     idle: "Ready for dictation",
@@ -38,6 +40,7 @@ const stateText = {
     release: "Release the shortcut to finish",
     stop: "Stop",
     stopTitle: "Stop recording and start transcription",
+    move: "Drag to move the window",
   },
 } as const;
 
@@ -116,6 +119,11 @@ export default function Overlay() {
 
   const label = stateText[language];
   const stage = progressLabel(snapshot.progress.stage, language);
+  const moveWindow = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target instanceof Element && event.target.closest("button, a, input, select, textarea"))) return;
+    event.preventDefault();
+    void invoke("start_overlay_drag").catch((reason: unknown) => setNotice(errorMessage(reason, language)));
+  };
   const stopRecording = async () => {
     try {
       await invoke("stop_and_transcribe");
@@ -132,10 +140,10 @@ export default function Overlay() {
 
   return (
     <main className="overlay-shell">
-      <div ref={card} className={`overlay-card ${snapshot.state}`}>
+      <div ref={card} className={`overlay-card ${snapshot.state}`} onMouseDown={moveWindow} title={label.move}>
         <div className={`overlay-state-icon ${snapshot.state}`} aria-hidden="true">{icon}</div>
         <div className="overlay-copy" role={snapshot.state === "error" ? "alert" : "status"} aria-live={snapshot.state === "error" ? "assertive" : "polite"} aria-atomic="true">
-          <strong>{label[snapshot.state]}</strong>
+          <div className="overlay-heading"><strong>{label[snapshot.state]}</strong><GripVertical className="overlay-drag-grip" aria-hidden="true" /></div>
           {snapshot.state === "recording" && <span>{label.release}</span>}
           {snapshot.state === "transcribing" && <span>{stage}</span>}
           {snapshot.state === "error" && <span className="error-text">{errorMessage(snapshot.error, language)}</span>}

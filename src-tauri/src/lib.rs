@@ -5,20 +5,29 @@ mod app_ui;
 mod audio;
 mod commands;
 mod dictation;
+mod overlay_window;
 mod recovery;
 
 use app_ui::*;
 use commands::*;
 use dictation::*;
+use overlay_window::*;
 use recovery::*;
 
+mod api_key_status;
+mod model_updates;
 mod models;
+#[cfg(test)]
+mod settings_contract_tests;
 mod shortcuts;
 mod storage;
 #[cfg(test)]
 mod tests;
 mod text_insertion;
 mod transcription;
+mod transcription_cost;
+mod transcription_protocol;
+mod vocabulary;
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests;
 
@@ -38,7 +47,7 @@ use std::sync::{Arc, Mutex};
 use tauri::menu::{AboutMetadata, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use zeroize::Zeroizing;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
@@ -71,6 +80,8 @@ fn recovery_plan(failed: &FailedRecording) -> Result<RecoveryPlan, String> {
 
 struct AppState {
     settings: Mutex<AppSettings>,
+    model_updates: model_updates::ModelUpdateState,
+    api_key_status: Mutex<api_key_status::ApiKeyStatus>,
     history: Mutex<Vec<TranscriptEntry>>,
     failed_recording: Mutex<Option<FailedRecording>>,
     recorder: audio::RecorderService,
@@ -102,6 +113,8 @@ impl AppState {
             .map(|recording| recording.error.clone());
         Self {
             settings: Mutex::new(storage::load_settings()),
+            model_updates: model_updates::ModelUpdateState::default(),
+            api_key_status: Mutex::new(api_key_status::ApiKeyStatus::default()),
             history: Mutex::new(history),
             failed_recording: Mutex::new(failed_recording),
             recorder: audio::RecorderService::new(),
@@ -227,6 +240,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .manage(AppState::load())
+        .manage(overlay_window::OverlayWindowState::load())
         .menu(build_application_menu)
         .on_menu_event(|app, event| {
             if event.id.as_ref() == APP_QUIT_MENU_ID {
@@ -234,6 +248,11 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
+            if window.label() == "overlay" {
+                if let WindowEvent::Moved(position) = event {
+                    overlay_window::remember_move(window, *position);
+                }
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
@@ -260,6 +279,8 @@ pub fn run() {
             bootstrap,
             overlay_bootstrap,
             update_settings,
+            get_model_catalog,
+            check_api_key,
             save_api_key,
             delete_api_key,
             begin_shortcut_capture,
@@ -276,12 +297,14 @@ pub fn run() {
             open_accessibility_settings,
             refresh_accessibility_status,
             reposition_overlay,
+            start_overlay_drag,
             open_local_path,
             create_diagnostic_bundle
         ])
         .build(tauri::generate_context!())
         .expect("error while building AIDOO Whisper Lite");
     app.run(|app, event| match event {
+        tauri::RunEvent::Exit => overlay_window::flush_position(app),
         tauri::RunEvent::ExitRequested { api, .. }
             if app
                 .state::<AppState>()

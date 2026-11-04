@@ -4,7 +4,10 @@ export interface AppSettings {
   onboardingComplete: boolean;
   uiLanguage: "auto" | "bg" | "en";
   language: string;
-  model: "gpt-4o-mini-transcribe" | "gpt-transcribe";
+  model: string;
+  modelDetails?: CatalogModel | null;
+  vocabularyEnabled: boolean;
+  vocabularyTerms: string[];
   autoPaste: boolean;
   saveAudio: boolean;
   saveText: boolean;
@@ -25,6 +28,7 @@ export interface TranscriptEntry {
   language: string;
   audioPath: string | null;
   textPath: string | null;
+  cost?: { estimatedUsd: number; usdPerMinute: number; pricingCheckedAt: string; billing: string } | null;
 }
 
 export interface FailedRecording {
@@ -63,6 +67,7 @@ export interface BootstrapState {
   failedRecording: FailedRecording | null;
   microphones: string[];
   hasApiKey: boolean;
+  apiKeyStatus: ApiKeyStatus;
   accessibilityGranted: boolean;
   appVersion: string;
   defaultOutputDirectory: string;
@@ -82,3 +87,22 @@ export interface TranscriptionCompleted {
 }
 
 export type AppLanguage = "bg" | "en";
+
+export interface CatalogModel {
+  id: string;
+  rank: number;
+  protocol: string;
+  estimatedUsdPerMinute: number;
+  billing: string;
+  pricingCheckedAt: string;
+  languages: string[];
+  benefitBg: string;
+  benefitEn: string;
+  source: string;
+}
+export interface CatalogModelOption extends CatalogModel {
+  available?: boolean | null;
+  isNew?: boolean;
+}
+export interface CatalogReport { models: CatalogModelOption[]; catalogUpdated: boolean; }
+export interface ApiKeyStatus { phase: string; checkedAt: string | null; lastSuccessAt: string | null; }

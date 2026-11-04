@@ -8,6 +8,8 @@
     "core:event:allow-unlisten",
     "allow-bootstrap",
     "allow-update-settings",
+    "allow-get-model-catalog",
+    "allow-check-api-key",
     "allow-save-api-key",
     "allow-delete-api-key",
     "allow-begin-shortcut-capture",

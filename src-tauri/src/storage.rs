@@ -110,14 +110,35 @@ fn ensure_private_directory(path: &Path) -> Result<(), String> {
 }
 
 pub fn load_settings() -> AppSettings {
-    let mut settings: AppSettings =
-        read_json(&settings_path(), MAX_SETTINGS_JSON_BYTES).unwrap_or_default();
+    let saved = read_json::<AppSettings>(&settings_path(), MAX_SETTINGS_JSON_BYTES);
+    let migrate_legacy_choice = saved.as_ref().is_none_or(|s| s.model_details.is_none());
+    let mut settings = saved.unwrap_or_default();
+    if migrate_legacy_choice {
+        if let Some(model) = load_model_choice() {
+            settings.model = model.id.clone();
+            settings.model_details = Some(model);
+        }
+    }
     settings.normalize();
     settings
 }
 
 pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     write_json_atomic(&settings_path(), settings)
+}
+
+pub(crate) fn load_overlay_position() -> Option<crate::overlay_window::SavedPosition> {
+    read_json::<crate::overlay_window::SavedPosition>(
+        &data_dir().join("overlay-position.json"),
+        4096,
+    )
+    .filter(|position| position.valid())
+}
+
+pub(crate) fn save_overlay_position(
+    position: &crate::overlay_window::SavedPosition,
+) -> Result<(), String> {
+    write_json_atomic(&data_dir().join("overlay-position.json"), position)
 }
 
 pub fn load_history() -> Vec<TranscriptEntry> {
@@ -258,6 +279,8 @@ fn newest_recovery_audio() -> Option<FailedRecording> {
         error: error.into(),
         retryable,
         completed_text: None,
+        transcription_model: None,
+        transcription_language: None,
     })
 }
 
@@ -529,6 +552,16 @@ fn write_json_atomic<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()
     write_private_bytes_atomic(path, &bytes)
 }
 
+// Legacy 1.0.7 consent record, read only when migrating settings without model metadata.
+pub(crate) fn load_model_choice() -> Option<crate::model_updates::CatalogModel> {
+    read_json::<crate::model_updates::CatalogModel>(&data_dir().join("model-choice.json"), 8192)
+        .filter(crate::model_updates::CatalogModel::valid)
+}
+#[cfg(test)]
+pub(crate) fn save_model_choice(model: &crate::model_updates::CatalogModel) -> Result<(), String> {
+    write_json_atomic(&data_dir().join("model-choice.json"), model)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -620,6 +653,8 @@ mod tests {
             error: String::new(),
             retryable,
             completed_text: completed_text.map(str::to_owned),
+            transcription_model: None,
+            transcription_language: None,
         };
         assert_eq!(
             recovery_file_retryability(&format!("failed-dictation-retryable-{identifier}.flac")),

@@ -1,6 +1,6 @@
 [package]
 name = "aidoo-whisper-lite"
-version = "1.0.5"
+version = "1.0.12"
 description = "Cost-efficient voice dictation for macOS and Windows"
 authors = ["Aidoo Ltd. OOD"]
 edition = "2021"
@@ -31,7 +31,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "mul
 sys-locale = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "io-util", "sync"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-zip = { version = "4", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 zeroize = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]

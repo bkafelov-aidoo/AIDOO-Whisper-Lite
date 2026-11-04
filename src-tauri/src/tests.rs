@@ -19,7 +19,8 @@ fn history_entry() -> TranscriptEntry {
         text: "text".into(),
         created_at: "2026-09-14T00:00:00Z".into(),
         duration_seconds: 1.0,
-        model: "gpt-4o-mini-transcribe".into(),
+        model: crate::models::TRANSCRIPTION_MODEL.into(),
+        cost: None,
         language: "bg".into(),
         audio_path: Some(
             output
@@ -44,6 +45,8 @@ fn recovery_recording(path: &Path, retryable: bool) -> FailedRecording {
         error: "network".into(),
         retryable,
         completed_text: None,
+        transcription_model: None,
+        transcription_language: None,
     }
 }
 
@@ -125,7 +128,15 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
             uuid::Uuid::new_v4()
         ));
         std::fs::write(&source, b"fLaC charged audio").unwrap();
-        let failed_recording = Mutex::new(Some(recovery_recording(&source, false)));
+        let mut paid = recovery_recording(&source, false);
+        let request_settings = AppSettings {
+            model: "gpt-4o-mini-transcribe".into(),
+            model_details: crate::model_updates::bundled_model("gpt-4o-mini-transcribe"),
+            language: "bg".into(),
+            ..AppSettings::default()
+        };
+        crate::recovery::snapshot_transcription_settings(&mut paid, &request_settings);
+        let failed_recording = Mutex::new(Some(paid));
 
         preserve_completed_recovery_with(
             &failed_recording,
@@ -145,9 +156,59 @@ fn completed_openai_text_is_finished_locally_without_another_request() {
             Some("already paid text")
         );
         assert!(!persisted.retryable);
+        assert_eq!(persisted.transcription_language.as_deref(), Some("bg"));
+        let later_settings = AppSettings {
+            language: "en".into(),
+            ..AppSettings::default()
+        };
+        let restored = crate::recovery::completed_recovery_settings(later_settings, &persisted);
+        assert_eq!(restored.model, "gpt-4o-mini-transcribe");
+        assert_eq!(restored.language, "bg");
+        let cost =
+            crate::transcription_cost::estimate(restored.model_details.as_ref(), 30.0).unwrap();
+        assert!((cost.estimated_usd - 0.0015).abs() < 1e-12);
+        let legacy = crate::recovery::completed_recovery_settings(
+            AppSettings::default(),
+            &recovery_recording(&source, false),
+        );
+        assert_eq!(legacy.model, "unknown");
+        assert!(crate::transcription_cost::estimate(legacy.model_details.as_ref(), 30.0).is_none());
     });
 
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn completed_recovery_restores_request_language_and_legacy_is_unknown() {
+    let paid: FailedRecording = serde_json::from_value(serde_json::json!({
+        "path": "/tmp/paid.flac", "createdAt": "2026-10-11T18:00:00Z",
+        "durationSeconds": 30.0, "error": "local save failed", "retryable": false,
+        "completedText": "already paid Bulgarian text", "transcriptionLanguage": "bg",
+        "transcriptionModel": crate::model_updates::bundled_model("gpt-4o-mini-transcribe").unwrap()
+    }))
+    .unwrap();
+    let current = AppSettings {
+        language: "en".into(),
+        ..AppSettings::default()
+    };
+    let restored = crate::recovery::completed_recovery_settings(current.clone(), &paid);
+    assert_eq!(restored.language, "bg");
+    assert_eq!(restored.model, "gpt-4o-mini-transcribe");
+    let persisted: FailedRecording =
+        serde_json::from_slice(&serde_json::to_vec(&paid).unwrap()).unwrap();
+    assert_eq!(
+        crate::recovery::completed_recovery_settings(current.clone(), &persisted).language,
+        "bg"
+    );
+    let legacy = recovery_recording(Path::new("/tmp/legacy.flac"), false);
+    assert_eq!(
+        crate::recovery::completed_recovery_settings(current, &legacy).language,
+        "unknown"
+    );
+    assert_eq!(
+        recovery_plan(&paid).unwrap(),
+        RecoveryPlan::FinishLocally("already paid Bulgarian text".into())
+    );
 }
 
 #[test]
@@ -232,6 +293,7 @@ fn diagnostic_settings_exclude_private_device_and_path_details() {
     let settings = AppSettings {
         output_directory: Some("/Users/example/Private Transcripts".into()),
         microphone_name: Some("Owner's Studio Microphone".into()),
+        vocabulary_terms: vec!["Private vocabulary phrase".into()],
         ..AppSettings::default()
     };
 
@@ -242,6 +304,8 @@ fn diagnostic_settings_exclude_private_device_and_path_details() {
     assert!(!serialized.contains("Private Transcripts"));
     assert!(!serialized.contains("Owner's Studio Microphone"));
     assert!(!serialized.contains("/Users/example"));
+    assert!(!serialized.contains("Private vocabulary phrase"));
+    assert!(serialized.contains("\"vocabularyTermCount\":1"));
 }
 
 #[test]
@@ -589,10 +653,11 @@ fn overlay_stays_visible_until_dictation_is_ready_again() {
 }
 
 #[test]
-fn overlay_accepts_clicks_only_while_its_stop_button_is_actionable() {
-    assert!(overlay_accepts_pointer_input("starting"));
-    assert!(overlay_accepts_pointer_input("recording"));
-    for state in ["idle", "transcribing", "done", "error"] {
+fn overlay_remains_draggable_in_every_visible_state() {
+    for state in ["starting", "recording", "transcribing", "done", "error"] {
+        assert!(overlay_accepts_pointer_input(state), "{state}");
+    }
+    for state in ["idle", "unknown"] {
         assert!(!overlay_accepts_pointer_input(state), "{state}");
     }
 }
@@ -650,4 +715,26 @@ fn tray_errors_follow_the_selected_interface_language() {
         localized_native_error("Не беше разпозната реч.", false),
         "Не беше разпозната реч."
     );
+}
+
+#[test]
+fn history_cost_survives_restart_and_legacy_history_has_no_invented_cost() {
+    let root =
+        std::env::temp_dir().join(format!("aidoo-lite-history-cost-{}", uuid::Uuid::new_v4()));
+    crate::storage::with_test_data_dir(root.clone(), || {
+        crate::storage::ensure_directories().unwrap();
+        let mut entry = history_entry();
+        let mut legacy_json = serde_json::to_value(&entry).unwrap();
+        legacy_json.as_object_mut().unwrap().remove("cost");
+        let legacy: TranscriptEntry = serde_json::from_value(legacy_json).unwrap();
+        assert!(legacy.cost.is_none());
+        entry.cost =
+            crate::transcription_cost::estimate(Some(&crate::model_updates::default_model()), 30.0);
+        crate::storage::save_history(&[entry, legacy]).unwrap();
+        let loaded = crate::storage::load_history();
+        assert_eq!(loaded[0].cost.as_ref().unwrap().usd_per_minute, 0.0045);
+        assert!((loaded[0].cost.as_ref().unwrap().estimated_usd - 0.00225).abs() < 1e-12);
+        assert!(loaded[1].cost.is_none());
+    });
+    std::fs::remove_dir_all(root).unwrap();
 }

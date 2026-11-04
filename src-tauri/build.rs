@@ -3,6 +3,8 @@ fn main() {
         "bootstrap",
         "overlay_bootstrap",
         "update_settings",
+        "get_model_catalog",
+        "check_api_key",
         "save_api_key",
         "delete_api_key",
         "begin_shortcut_capture",
@@ -19,6 +21,7 @@ fn main() {
         "open_accessibility_settings",
         "refresh_accessibility_status",
         "reposition_overlay",
+        "start_overlay_drag",
         "open_local_path",
         "create_diagnostic_bundle",
     ];

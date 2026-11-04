@@ -102,6 +102,10 @@ pub(super) fn finalize_success(
         text: text.clone(),
         created_at: Utc::now().to_rfc3339(),
         duration_seconds,
+        cost: crate::transcription_cost::estimate(
+            settings.model_details.as_ref(),
+            duration_seconds,
+        ),
         model: settings.model.clone(),
         language: settings.language.clone(),
         audio_path: audio_path
@@ -255,6 +259,8 @@ pub(super) fn retain_failed_recording(
         error: error.into(),
         retryable,
         completed_text,
+        transcription_model: None,
+        transcription_language: None,
     })
 }
 
@@ -294,6 +300,8 @@ fn retain_history_recording_copy(
         error: error.into(),
         retryable,
         completed_text,
+        transcription_model: None,
+        transcription_language: None,
     })
 }
 
@@ -465,6 +473,7 @@ pub(super) async fn retry_failed_transcription(
     let key = match plan {
         RecoveryPlan::FinishLocally(text) => {
             set_progress(&app, 100, "finishing_locally", true);
+            let settings = completed_recovery_settings(settings, &failed);
             return match finalize_success(&app, &settings, &staged, failed.duration_seconds, text) {
                 Ok(completed) => Ok(publish_recovery_completion(
                     &app,
@@ -506,7 +515,7 @@ pub(super) async fn retry_failed_transcription(
     let callback: transcription::ProgressCallback = Arc::new(move |percent, stage, determinate| {
         set_progress(&app_for_progress, percent, stage, determinate)
     });
-    match transcription::transcribe(&staged, &key, &settings, Some(callback)).await {
+    match transcription::transcribe(&app, &staged, &key, &settings, Some(callback)).await {
         Ok(text) => {
             set_progress(&app, 100, "finishing_locally", true);
             let completed_text = text.clone();
@@ -630,6 +639,13 @@ pub(super) fn set_failed_recording_retryability(
         failed.retryable = retryable;
         failed.completed_text = None;
         failed.error = error.into();
+        if error == IN_FLIGHT_RECOVERY_ERROR {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "Настройките са заключени.")?;
+            snapshot_transcription_settings(failed, &settings);
+        }
         storage::save_failed_recording(failed).map_err(|storage_error| {
             format!("Recovery състоянието не можа да бъде запазено: {storage_error}")
         })?;
@@ -782,7 +798,7 @@ pub(super) async fn retranscribe_history_item(
     set_recording_state(&app, "transcribing");
     // Keep the user's history FLAC untouched, but create and persist a non-retryable Recovery
     // copy before OpenAI can receive this retranscription. A crash must block another request.
-    let pending = match retain_history_recording_copy(
+    let mut pending = match retain_history_recording_copy(
         Path::new(&audio_path),
         entry.duration_seconds,
         IN_FLIGHT_RECOVERY_ERROR,
@@ -795,6 +811,7 @@ pub(super) async fn retranscribe_history_item(
             return Err(error);
         }
     };
+    snapshot_transcription_settings(&mut pending, &settings);
     let request_audio = PathBuf::from(&pending.path);
     if let Err(error) = store_failed_recording(&app, &state, pending) {
         set_error(&app, &error);
@@ -804,7 +821,7 @@ pub(super) async fn retranscribe_history_item(
     let callback: transcription::ProgressCallback = Arc::new(move |percent, stage, determinate| {
         set_progress(&app_for_progress, percent, stage, determinate)
     });
-    match transcription::transcribe(&request_audio, &key, &settings, Some(callback)).await {
+    match transcription::transcribe(&app, &request_audio, &key, &settings, Some(callback)).await {
         Ok(text) => {
             set_progress(&app, 100, "finishing_locally", true);
             let completed_text = text.clone();
@@ -845,4 +862,32 @@ pub(super) async fn retranscribe_history_item(
             Err(message)
         }
     }
+}
+
+pub(super) fn snapshot_transcription_settings(
+    failed: &mut FailedRecording,
+    settings: &AppSettings,
+) {
+    failed.transcription_model = settings.model_details.clone();
+    failed.transcription_language = Some(settings.language.clone());
+}
+
+// Local completion retains the price/model/language of the already paid request,
+// even if Settings changed. Legacy metadata cannot prove the original language.
+pub(super) fn completed_recovery_settings(
+    mut settings: AppSettings,
+    failed: &FailedRecording,
+) -> AppSettings {
+    settings.model_details = failed.transcription_model.clone().filter(|m| m.valid());
+    settings.model = settings
+        .model_details
+        .as_ref()
+        .map(|m| m.id.clone())
+        .unwrap_or_else(|| "unknown".into());
+    settings.language = failed
+        .transcription_language
+        .clone()
+        .filter(|language| crate::model_updates::language_supported(language))
+        .unwrap_or_else(|| "unknown".into());
+    settings
 }

@@ -110,6 +110,7 @@ pub(super) fn localized_native_error(error: &str, english: bool) -> String {
         return error.into();
     }
     let exact = match error {
+        vocabulary::INVALID_VOCABULARY => Some("Vocabulary allows up to 50 terms, 80 characters each, 2000 characters in total. Use one term per line without <, > or control characters."),
         "Ключът трябва да започва с sk-." => Some("The key must start with sk-."),
         "Не е намерен микрофон." => Some("No microphone was found."),
         "Не е намерен микрофон. Свържете устройство и опитайте отново." => {
@@ -725,7 +726,7 @@ pub(super) fn overlay_visible_for_state(state: &str) -> bool {
 }
 
 pub(super) fn overlay_accepts_pointer_input(state: &str) -> bool {
-    matches!(state, "starting" | "recording")
+    overlay_visible_for_state(state)
 }
 
 pub(super) fn set_recording_state(app: &AppHandle, next: &str) {
@@ -819,32 +820,13 @@ pub(crate) fn show_recording_overlay(app: &AppHandle) {
             .map(|state| state.clone())
             .unwrap_or_default();
         let _ = window.set_ignore_cursor_events(!overlay_accepts_pointer_input(&state));
-        reposition_overlay_inner(app);
+        overlay_window::reposition(app);
         let _ = window.show();
     }
     emit_snapshot(app);
 }
 
-fn reposition_overlay_inner(app: &AppHandle) {
-    let Some(window) = app.get_webview_window("overlay") else {
-        return;
-    };
-    let Ok(cursor) = app.cursor_position() else {
-        return;
-    };
-    let Ok(Some(monitor)) = app.monitor_from_point(cursor.x, cursor.y) else {
-        return;
-    };
-    let Ok(size) = window.outer_size() else {
-        return;
-    };
-    let work_area = monitor.work_area();
-    let x = work_area.position.x + (work_area.size.width.saturating_sub(size.width) / 2) as i32;
-    let y = work_area.position.y + work_area.size.height.saturating_sub(size.height + 18) as i32;
-    let _ = window.set_position(PhysicalPosition::new(x, y));
-}
-
 #[tauri::command]
 pub(super) fn reposition_overlay(app: AppHandle) {
-    reposition_overlay_inner(&app);
+    overlay_window::reposition(&app);
 }

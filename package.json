@@ -1,12 +1,12 @@
 {
   "name": "aidoo-whisper-lite",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.12",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "check": "tsc --noEmit && npm run check:structure && npm run check:i18n && npm run check:release-config && npm run check:macos-dependencies && npm run check:website && npm run check:windows",
+    "check": "tsc --noEmit && npm run check:settings-contract && npm run check:model-catalog && npm run check:structure && npm run check:i18n && npm run check:release-config && npm run check:macos-dependencies && npm run check:website && npm run check:windows",
     "check:structure": "python3 scripts/check-source-layout.py",
     "check:i18n": "node scripts/check-i18n-errors.mjs",
     "check:release-config": "python3 scripts/check-release-config.py",
@@ -22,7 +22,9 @@
     "build:windows:check": "tauri build --target x86_64-pc-windows-msvc --no-bundle --ci -- --locked",
     "bundle:windows": "tauri build --target x86_64-pc-windows-msvc --bundles nsis --ci -- --locked",
     "bundle:windows:signed": "tauri build --target x86_64-pc-windows-msvc --bundles nsis --ci --config src-tauri/tauri.windows-signing.conf.json -- --locked",
-    "check:windows": "python3 scripts/check-windows-config.py"
+    "check:windows": "python3 scripts/check-windows-config.py",
+    "check:settings-contract": "node scripts/check-settings-contract.mjs",
+    "check:model-catalog": "node scripts/check-model-catalog.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
@@ -39,6 +41,8 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.2"
   }
 }

@@ -132,4 +132,6 @@ python3 "$project_root/scripts/package-website-release.py" --dmg "$dmg" --output
 "$project_root/scripts/audit-mac-release.sh" "$release_dmg"
 python3 "$project_root/scripts/package-website-release.py" --verify --output "$release_dir"
 
+python3 "$project_root/scripts/collect-clean-dmgs.py"
+
 printf 'Release package:\n%s\n' "$release_dir"

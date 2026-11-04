@@ -52,6 +52,31 @@ Status date: 15 September 2026
 - A diagnostics package created by the installed build uses `0600`, contains only `diagnostics.log`, redacted `settings.json` and `system.txt`, and contains no OpenAI key, known transcription text or user home path.
 - Earlier interactive checks also covered settings, local persistence, recovery after a failed transcription, clipboard copy and the close/reopen lifecycle.
 
+## Candidate — movable recording overlay, 2026-10-10
+
+The user approved top-right placement, dragging and persistent position on 2026-10-10. This is a source candidate based on `8f255310601e76882641d53840e84877174d640a`, developed on `codex/lite-movable-recording-overlay`; it is not an installed-app acceptance or a promoted working baseline.
+
+- With no saved position, the overlay opens at the top right of the cursor's active screen, inside its usable area. Drag the card to choose another position; Stop remains a separate action. Every visible state accepts dragging while the native window remains non-focusable.
+- The user position is stored as logical offsets in private `overlay-position.json`, independently of dictation settings. Native move events from automatic positioning do not replace it. Writes are coalesced while dragging, and quitting flushes the last move immediately.
+- Status, progress and height changes retain the visible window's screen and position, including manually chosen points at the screen edge. A position is clamped only when needed to keep the window inside the usable area. A new recording or app restart restores the saved position on the active display, accounting for DPI and clamping for a smaller display.
+- Automated evidence: all 60 Rust tests pass, including nine placement/persistence tests and the visible-state pointer policy. Strict Clippy, TypeScript, source-layout, localization, release-configuration, macOS-dependency, website, production frontend build and diff checks pass. The full tests require loopback access for the existing local HTTP failure-contract test.
+- Visual/interaction evidence: a local browser preview loaded the actual production frontend with simulated native IPC. Recording, starting, transcribing, done and error copy rendered; dragging was requested from the card in recording/done, and Stop requested transcription without requesting a drag. The rendered error card had `scrollWidth == clientWidth == 504`. This verifies the frontend, not actual macOS window dragging, keyboard-focus retention or physical dictation. The design detector reported two pre-existing width-transition warnings in unchanged progress-bar styles; this scoped change preserves those animations.
+- The existing signed/notarized ARM DMG remains unchanged at `release/1.0.5/AIDOO Whisper Lite_1.0.5_aarch64.dmg`, SHA-256 `d260dbb408d2385ec09d4913c6d2d833a0c87b77829c8bacf32e9063579e38c6`. It does not contain this candidate. No new installer or installed application replacement was performed.
+
+Installed acceptance after a separately requested test installer: confirm initial top-right placement; drag during recording/processing; verify that Stop works without moving the window and that the destination app keeps keyboard focus; confirm status changes preserve position; quit immediately after dragging and restart; check a second monitor/DPI and a smaller work area. Only an explicit user statement that this exact candidate works promotes it.
+
+## Candidate — personal vocabulary, 2026-10-11
+
+Authorized by the user's “НАправи го”, then narrowed by the explicit instruction to preserve the existing completed-text flow and use the vocabulary only as transcription context. The candidate is on `codex/lite-vocabulary-and-latency`, based on the preserved overlay commit `bbb386b`. It is source verification, not installed-app acceptance or a promoted working baseline.
+
+- Settings includes an editable vocabulary with an on/off switch, one literal term per line, 50-term/80-character/2000-character limits, inline bilingual errors, private persistence and case-insensitive deduplication that retains the first spelling. Older settings preserve empty vocabulary behavior. The unresolved word “локторация” was not silently changed or inserted; the UI example is “кофердам”.
+- Enabled terms enter the existing Economy request as a prompt or Maximum accuracy request as keywords. GPT-Transcribe uses `languages[]`; Economy uses `language`. Disabled or empty vocabulary sends no hints. Neither model nor its rate was changed; no correction model was added. Economy's prompt contributes text input to the same request, so exact token billing need not be identical to an empty dictionary.
+- The completed-JSON response and final-text flow are preserved. There is no streaming response request, preliminary text, new overlay resize behavior or change to recording, Recovery, history, clipboard or paste. The native transcription client retains a connection pool with credentials per request; HTTPS, redirects, timeouts and retry policy are preserved. The earlier uncommitted preview candidate is archived only under ignored development evidence.
+- Verification after removing preliminary text: all 65 native tests passed, strict Clippy passed with warnings denied, formatting and diff checks passed, and TypeScript/source layout/90 English-error fixtures/release configuration/macOS dependency boundary/website/production frontend build passed. A request-level regression proves dictionary fields for both models, disabled vocabulary, completed JSON with no `stream` field and four requests using one TCP connection; pre-request invalid-vocabulary rejection, old settings and diagnostic privacy are covered. Existing dictionary UI evidence used the production frontend with simulated native IPC: Bulgarian/English labels/errors, invalid-input Save blocking, dictionary retention while disabled and the minimum 900×620 layout. The dictionary screenshot is `release/development-evidence/20261011-vocabulary-latency/vocabulary-settings-bg.png`; this is frontend evidence, not a real microphone/Keychain/OpenAI test.
+- Existing production ARM DMG was independently rehashed unchanged: `d260dbb408d2385ec09d4913c6d2d833a0c87b77829c8bacf32e9063579e38c6`. No new installer, installed replacement, upload, Windows port or baseline promotion was performed. Every newly built/delivered DMG must use a new application version per `RELEASE.md`.
+
+Installed acceptance after a separately requested installer: save a real short dental vocabulary and restart; compare recognition with vocabulary enabled/disabled for each model; check numbers and terminology, final-text delivery and paste exactly once. Live OpenAI latency, billing and real dental accuracy have not been measured by this candidate.
+
 ## Required before public launch
 
 - Complete the first-run and critical dictation path from [ACCEPTANCE.md](ACCEPTANCE.md) on a second Apple Silicon Mac or a clean macOS account, including Bulgarian/English system-language behavior and fresh Microphone/Accessibility permission prompts.
@@ -61,3 +86,39 @@ Status date: 15 September 2026
 - Verify representative Bulgarian and English microphone/OpenAI errors, Accessibility-denied clipboard fallback and VoiceOver announcements.
 - Configure the six Apple signing/notarization secrets in the private GitHub repository before relying on its release workflow. Local Keychain notarization is already validated.
 - Upload the exact audited 1.0.5 DMG and matching checksum to the AIDOO website together with the privacy, support and release-notes pages.
+
+## Source candidate — 2026-10-11: single model and startup recommendations
+
+- Economy/Maximum accuracy selection is removed; existing preferences migrate to `gpt-transcribe` unless a curated successor has been explicitly accepted. Language and vocabulary remain available in Settings and onboarding.
+- Main-window initialization performs one quiet native catalog check when a key is present. Compatible higher-ranked recommendations require OpenAI account availability and explicit bilingual-modal confirmation. Atomic consent survives restart; active operations, stale proposals and changed keys cannot approve a switch.
+- The public catalog was published independently on GitHub main at commit `4d89dd7a6de19f69ac14d9660cf122747ec109bc`; the exact raw startup URL was verified byte-for-byte. It contains only `gpt-transcribe`, so no real upgrade popup appears today. App source remains a local candidate.
+- Evidence: 71 Rust tests, strict all-target/all-feature Clippy, formatting, TypeScript, source/localization/release/macOS/website checks and production frontend build pass. Local HTTP mocks cover availability, restricted keys, duplicate checks, credential isolation and the actual selected-model upload. The modal and hook were checked in Bulgarian/English with test-only data for Later, Use and postponement during a simulated recording.
+- No paid API request, real microphone dictation, installed-runtime acceptance or new DMG. Existing release artifacts and tags remain preserved. No baseline is promoted.
+
+## Candidate — model selector, cost history and searchable languages, 2026-10-11
+
+The user approved a Settings selector of compatible OpenAI file-transcription models and history costs, then requested live key status, interface language buttons and a searchable dictation-language combobox. This candidate preserves the final-text-only flow and no-automatic-retry policy. Bundled models include GPT-Transcribe, 4o/Mini, Diarize, Whisper and documented Mini snapshots. Vocabulary follows each protocol; Diarize clearly disables its use. Costs retain the selected rate/date and remain estimates. Legacy history shows no data. Already paid local recovery retains the original model/rate instead of the current preference.
+
+Native verification uses local HTTP mocks and temporary private storage; UI verification uses actual Settings/History components with visibly labelled test fixtures at 1040×720 and the minimum 900×620 viewport, in Bulgarian and English. No real API charge, microphone dictation, installed-runtime acceptance, new DMG or confirmed-baseline promotion is claimed. Existing release tags and installers remain unchanged. Exact local check results are stored under `release/development-evidence/model-selector-20261011/`.
+
+## Candidate — Settings IPC and related regressions, 2026-10-11
+
+User-reported installed 1.0.9 failure: choosing a model then saving Settings raised `unknown field available` at `update_settings`. The React picker placed account availability/new flags inside persisted model details, while native CatalogModel deliberately denies unknown fields. The previous UI mock did not exercise native argument deserialization.
+
+The candidate separates persisted CatalogModel from account CatalogModelOption, projects only the persisted fields at selection and again at the command boundary, and retains strict native parsing and trusted native selection. A cross-language regression executes the actual React callback for all seven choices in both UI languages, then deserializes the emitted payload as native AppSettings. It failed with the user's exact message before the fix.
+
+Additional reproduced fixes: removing a key during discovery stops loading and ignores the late response; the first Escape closes only the language list inside Onboarding, with the second retaining dialog dismissal; free model-list verification cannot revive Working after a paid-request failure; local preflight failures emit no key-health change; completed local recovery preserves the original language as well as model/rate, with unknown language for legacy metadata; raw Intl language codes fall back to catalog names.
+
+All changes are a source candidate. Existing `lite-v1.0.9` and its signed/notarized installer are preserved; this request creates no new installer or promoted working baseline. Regression evidence is under `release/development-evidence/settings-bug-20261011/`. Tests use local fixtures without real OpenAI credentials, microphone audio or paid requests.
+
+## Requested corrected installer — 1.0.10, 2026-10-11
+
+The user explicitly requested one corrected Mac ARM DMG containing the seven Settings/key/language/recovery fixes. Version 1.0.10 is prepared from the verified `bcaa0ca` source, with all older installers and immutable release tags preserved. The release pipeline repeats the automated checks and independently audits the exact signed/notarized artifact; results are recorded under `release/development-evidence/dmg-1.0.10/`. Packaging does not establish installed microphone/API dictation acceptance or promote a working baseline.
+
+## Requested installer — 1.0.11, 2026-10-16
+
+The user requested one new Mac ARM DMG of the current Lite source. Version 1.0.11 contains the same application behavior as 1.0.10; only release metadata and release notes change. Existing release installers and immutable tags remain preserved. The release pipeline repeats source checks, native tests, signing, app-first Apple notarization and the mounted-artifact audit. Exact results are recorded under `release/development-evidence/dmg-1.0.11/`. Packaging does not establish installed microphone/API acceptance or promote a working baseline.
+
+## Windows candidate — 1.0.12, 2026-11-04
+
+The user requested a Windows installer. The separate Windows branch incorporates current Lite 1.0.11 model, vocabulary, history-cost, language and strict Settings fixes while preserving Windows F8/Ctrl+V, Credential Manager, private data paths and approval-gated Azure signing. Version 1.0.12 is a candidate; macOS source/installers and existing tags are preserved. Windows CI must verify the exact installed NSIS payload, signatures and native keyboard/credential tests. Real microphone/OpenAI transcription remains a user acceptance check, not an automated or signing claim.

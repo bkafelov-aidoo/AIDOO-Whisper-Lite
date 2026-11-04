@@ -41,6 +41,11 @@ pub(super) fn bootstrap(app: AppHandle, state: State<'_, AppState>) -> Bootstrap
         failed_recording,
         microphones: audio::microphone_names(),
         has_api_key,
+        api_key_status: state
+            .api_key_status
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default(),
         accessibility_granted: accessibility_granted(),
         app_version: app.package_info().version.to_string(),
         default_output_directory: storage::default_output_dir().to_string_lossy().to_string(),
@@ -69,7 +74,20 @@ pub(super) fn update_settings(
 ) -> Result<AppSettings, String> {
     let _operation = acquire_operation(&app, &state)?;
     let mut settings = settings;
+    let current = state
+        .settings
+        .lock()
+        .map_err(|_| "Настройките са заключени.")?
+        .clone();
+    let choice = model_updates::resolve_selection(
+        &state.model_updates,
+        &settings.model,
+        &settings.language,
+        &current,
+    )?;
+    settings.model_details = Some(choice);
     settings.normalize();
+    vocabulary::validate(&settings.vocabulary_terms)?;
     shortcuts::validate_settings(&settings)?;
     if settings.save_audio || settings.save_text {
         let directory = selected_output_dir(&settings);
@@ -107,6 +125,9 @@ pub(super) async fn save_api_key(
         .api_key
         .lock()
         .map_err(|_| "API key cache е заключен.")? = Some(key);
+    model_updates::invalidate_key(&state.model_updates);
+    api_key_status::reset(&app);
+    model_updates::check(&app).await;
     refresh_tray_menu(&app);
     Ok(())
 }
@@ -122,6 +143,8 @@ pub(super) fn delete_api_key(app: AppHandle, state: State<'_, AppState>) -> Resu
         .api_key
         .lock()
         .map_err(|_| "API key cache е заключен.")? = None;
+    model_updates::invalidate_key(&state.model_updates);
+    api_key_status::reset(&app);
     refresh_tray_menu(&app);
     Ok(())
 }
@@ -570,6 +593,8 @@ pub(super) fn diagnostic_settings(settings: &AppSettings) -> serde_json::Value {
         "uiLanguage": settings.ui_language,
         "language": settings.language,
         "model": settings.model,
+        "vocabularyEnabled": settings.vocabulary_enabled,
+        "vocabularyTermCount": settings.vocabulary_terms.len(),
         "autoPaste": settings.auto_paste,
         "saveAudio": settings.save_audio,
         "saveText": settings.save_text,
@@ -743,4 +768,22 @@ pub(super) fn create_diagnostic_bundle(app: AppHandle) -> Result<String, String>
         storage::append_diagnostic(&format!("diagnostic directory sync failed: {error}"));
     }
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub(super) async fn get_model_catalog(app: AppHandle) -> model_updates::CatalogReport {
+    model_updates::check(&app).await
+}
+
+#[tauri::command]
+pub(super) async fn check_api_key(app: AppHandle) -> api_key_status::ApiKeyStatus {
+    let state = app.state::<AppState>();
+    model_updates::invalidate_key(&state.model_updates);
+    model_updates::check(&app).await;
+    let status = state
+        .api_key_status
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default();
+    status
 }
