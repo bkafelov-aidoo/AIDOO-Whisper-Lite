@@ -447,7 +447,8 @@ def main() -> int:
             errors.append(
                 f"{path.name} workflow permissions differ: {workflow_permissions}"
             )
-        expected_build_jobs = 2 if path.name == "ci-windows.yml" else 1
+        jobs_source = source.partition("\njobs:\n")[2]
+        expected_build_jobs = len(re.findall(r"(?m)^  [A-Za-z0-9_-]+:\s*$", jobs_source))
         if source.count("persist-credentials: false") != expected_build_jobs:
             errors.append(
                 f"{path.name} must disable persisted checkout credentials in every build job"
