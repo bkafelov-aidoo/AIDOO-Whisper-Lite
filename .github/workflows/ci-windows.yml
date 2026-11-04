@@ -19,6 +19,23 @@ concurrency:
   cancel-in-progress: ${{ !inputs.signed }}
 
 jobs:
+  signing-preflight:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signed && github.ref == 'refs/heads/codex/whisper-lite-windows' }}
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Reject unsigned artifacts and other publishers
+        run: ./scripts/test-windows-signing-guard.ps1
+      - name: Check the packaged signature verification sequence
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/test-windows-bundled-signature.ps1
+      - name: Check temporary NSIS uninstaller signing
+        run: pwsh -NoProfile -NonInteractive -File ./scripts/test-windows-signing-hook.ps1
+
   windows:
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.signed }}
     runs-on: windows-2022
@@ -84,6 +101,7 @@ jobs:
             release/windows-ci/
 
   signed-windows:
+    needs: signing-preflight
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.signed && github.ref == 'refs/heads/codex/whisper-lite-windows' }}
     runs-on: windows-2022
     timeout-minutes: 75

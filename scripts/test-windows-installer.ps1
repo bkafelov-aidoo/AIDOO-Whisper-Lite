@@ -1,7 +1,6 @@
 param([switch]$RequireSignature)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windows-signature.ps1')
-$expectedVersion = (Get-Content -Raw (Join-Path $PSScriptRoot '../package.json') | ConvertFrom-Json).version
 $output = Join-Path $PSScriptRoot '../release/windows-ci'
 New-Item -ItemType Directory -Force $output | Out-Null
 Copy-Item (Join-Path $PSScriptRoot '../docs/WINDOWS.md') (Join-Path $output 'WINDOWS-GUIDE.md')
@@ -20,10 +19,6 @@ if ($install.ExitCode -ne 0) { throw "Installer exit code: $($install.ExitCode)"
 $installDir = Join-Path $env:LOCALAPPDATA 'AIDOO Whisper Lite'
 $exe = Join-Path $installDir 'aidoo-whisper-lite.exe'
 if (!(Test-Path $exe)) { throw "The installed application is missing: $exe" }
-$versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
-$installedVersion = '{0}.{1}.{2}' -f $versionInfo.ProductMajorPart, $versionInfo.ProductMinorPart, $versionInfo.ProductBuildPart
-if ($installedVersion -ne $expectedVersion) { throw "Installed app version $installedVersion differs from $expectedVersion." }
-
 if ($RequireSignature) {
     $signatureEvidence.installedApplication = Assert-AidooWindowsSignature $exe
     if ($signatureEvidence.installedApplication.sha256 -ne $signatureEvidence.bundledApplication.sha256) {
@@ -46,6 +41,10 @@ try {
     } while ($app.MainWindowTitle -ne 'AIDOO Whisper Lite')
     node (Join-Path $PSScriptRoot 'check-installed-windows-ui.mjs') $output
     if ($LASTEXITCODE -ne 0) { throw 'The installed Windows interface failed its startup check.' }
+    $expectedVersion = (Get-Content -Raw (Join-Path $PSScriptRoot '../package.json') | ConvertFrom-Json).version
+    $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+    $installedVersion = '{0}.{1}.{2}' -f $versionInfo.ProductMajorPart, $versionInfo.ProductMinorPart, $versionInfo.ProductBuildPart
+    if ($installedVersion -ne $expectedVersion) { throw "Installed app version $installedVersion differs from $expectedVersion." }
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
