@@ -1,0 +1,39 @@
+name: Diagnose installed Windows WebView2
+on:
+  push:
+    branches: [codex/whisper-lite-ui-diagnostics]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - name: Download the exact previously tested installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 41842920629 --repo bkafelov-aidoo/AIDOO-Whisper-Lite --name AIDOO-Whisper-Lite-Windows-x64-test --dir release/ui-input
+      - name: Reproduce startup without rebuilding or signing
+        run: ./scripts/diagnose-windows-ui.ps1
+      - name: Retain diagnostic observations only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Windows-WebView2-diagnostics
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            release/ui-diagnostics/results.json
+            release/ui-diagnostics/attempt-*/endpoint-wait.json
+            release/ui-diagnostics/attempt-*/installer-verification.json

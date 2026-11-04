@@ -7,14 +7,22 @@ const output = process.argv[2];
 const deadline = Date.now() + 30_000;
 const pause = () => new Promise((resolve) => setTimeout(resolve, 500));
 let page;
+let lastEndpointObservation = null;
+let endpointAttempts = 0;
 while (!page && Date.now() < deadline) {
+  endpointAttempts++;
   try {
-    const targets = await (await fetch("http://127.0.0.1:9222/json/list")).json();
+    const response = await fetch("http://127.0.0.1:9222/json/list");
+    const targets = await response.json();
+    lastEndpointObservation = { status: response.status, array: Array.isArray(targets), types: Array.isArray(targets) ? targets.map(target => target.type) : [] };
     page = targets.find((target) => target.type === "page" && !target.url.includes("window=overlay"));
-  } catch { /* WebView2 may still be starting. */ }
+  } catch (reason) { lastEndpointObservation = { errorKind: reason.name, code: reason.cause?.code ?? null }; }
   if (!page) await pause();
 }
-if (!page) throw new Error("The installed WebView2 did not open its test endpoint.");
+if (!page) {
+  await writeFile(join(output, "endpoint-wait.json"), JSON.stringify({ endpointAttempts, lastEndpointObservation }, null, 2));
+  throw new Error("The installed WebView2 did not open its test endpoint.");
+}
 const socket = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => {
   socket.addEventListener("open", resolve, { once: true });
