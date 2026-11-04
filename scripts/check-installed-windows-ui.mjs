@@ -4,7 +4,16 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const output = process.argv[2];
+const started = Date.now();
 const deadline = Date.now() + 30_000;
+const kind = (value) => {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "about:") return "blank";
+    if (url.hostname !== "tauri.localhost") return "other";
+    return url.searchParams.get("window") === "overlay" ? "overlay" : "main";
+  } catch { return "invalid"; }
+};
 const pause = () => new Promise((resolve) => setTimeout(resolve, 500));
 let page;
 let lastEndpointObservation = null;
@@ -14,7 +23,7 @@ while (!page && Date.now() < deadline) {
   try {
     const response = await fetch("http://127.0.0.1:9222/json/list");
     const targets = await response.json();
-    lastEndpointObservation = { status: response.status, array: Array.isArray(targets), types: Array.isArray(targets) ? targets.map(target => target.type) : [] };
+    lastEndpointObservation = { status: response.status, array: Array.isArray(targets), targets: Array.isArray(targets) ? targets.map(target => ({ type: target.type, kind: kind(target.url) })) : [] };
     page = targets.find((target) => target.type === "page" && !target.url.includes("window=overlay"));
   } catch (reason) { lastEndpointObservation = { errorKind: reason.name, code: reason.cause?.code ?? null }; }
   if (!page) await pause();
@@ -31,6 +40,7 @@ await new Promise((resolve, reject) => {
 let sequence = 0;
 const pending = new Map();
 const errors = [];
+let uiObservation = null;
 socket.addEventListener("message", ({ data }) => {
   const message = JSON.parse(data);
   if (message.id) {
@@ -63,6 +73,7 @@ try {
       returnByValue: true,
     });
     state = JSON.parse(response.result.value);
+    uiObservation = { ready: state.ready, platformWindows: state.platform === "windows", documentKind: kind(state.url), shortcutCount: state.shortcuts.length };
     if (!state.ready) await pause();
   } while (!state.ready && Date.now() < deadline);
   await writeFile(join(output, "installed-ui.json"), JSON.stringify({ ...state, errors }, null, 2));
@@ -74,5 +85,6 @@ try {
   if (state.shortcuts.some((shortcut) => /[⌘⌥⇧⌃]/.test(shortcut))) throw new Error("The Windows interface displayed Mac keyboard symbols.");
   console.log("Installed Windows interface loaded and displayed its Windows shortcut.");
 } finally {
+  await writeFile(join(output, "endpoint-wait.json"), JSON.stringify({ elapsedMs: Date.now() - started, endpointAttempts, selectedTargetKind: kind(page.url), lastEndpointObservation, uiObservation }, null, 2));
   socket.close();
 }
