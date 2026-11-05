@@ -439,7 +439,7 @@ export function errorMessage(reason: unknown, language: AppLanguage) {
     "Аудио файлът е заключен.": "The audio file is temporarily unavailable. Try again.",
     "Този клавиш не се поддържа като глобален shortcut.": "This key is not supported as a global shortcut.",
     "Escape е запазен и не може да бъде shortcut за диктовка.": "Escape is reserved and cannot be the dictation shortcut.",
-    "Десният Option/Alt или Ctrl се използва самостоятелно, без допълнителни модификатори.": "Right Option/Alt or Ctrl is used on its own, without additional modifiers.",
+    "Десният Ctrl се използва самостоятелно, без допълнителни модификатори.": "Right Ctrl is used on its own, without additional modifiers.",
     "Десният Option/Alt се използва самостоятелно, без допълнителни модификатори.": "Right Option/Alt is used on its own, without additional modifiers.",
     "Самостоятелно може да се използва само десният Option/Alt. За останалите изберете комбинация.": "Only Right Option/Alt can be used on its own. Choose a key combination for other keys.",
     "Добавете модификатор или използвайте F1–F12, за да не се изписва случаен знак в активното поле.": "Add a modifier or use F1–F12 so the shortcut does not type an unwanted character.",

@@ -36,7 +36,7 @@ jobs:
         with:
           path: src-tauri/target
           key: windows-shortcut-debug-rust-1.93.1-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
-      - run: cargo test --locked --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml windows_physical_listener_receives_f8_edges -- --ignored --test-threads=1
+      - run: cargo test --locked --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml windows_global_f8_receives_press_and_release -- --ignored --test-threads=1
       - run: ./scripts/shortcut-candidate.ps1
       - run: cargo test --locked --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --locked --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

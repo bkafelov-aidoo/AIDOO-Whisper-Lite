@@ -9,9 +9,6 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{atomic::AtomicBool, mpsc::Sender, Arc};
 use tauri::{AppHandle, Emitter, Manager};
 
-#[cfg(target_os = "windows")]
-mod windows_input;
-
 const TARGET_DICTATION: &str = "dictation";
 #[cfg(target_os = "macos")]
 const MACOS_EVENT_TAP_OPTIONS: u32 = 0; // kCGEventTapOptionDefault (Accessibility)
@@ -134,10 +131,24 @@ struct ShortcutRuntime {
 }
 
 impl ShortcutRuntime {
+    fn consume_capture_event(&mut self, code: &str, pressed: bool, capturing: bool) -> bool {
+        if !pressed && self.captured_keys.remove(code) {
+            return true;
+        }
+        if self.captured_keys.contains(code) {
+            return true;
+        }
+        if capturing && pressed && (!is_modifier_code(code) || code == "alt_gr") {
+            self.captured_keys.insert(code.to_string());
+        }
+        false
+    }
+
     #[cfg(target_os = "macos")]
     fn reset_stale_inputs(&mut self) -> bool {
         let dictation_was_active = self.dictation_trigger.take().is_some();
         self.modifiers = ModifierState::default();
+        self.captured_keys.clear();
         dictation_was_active
     }
 }
@@ -157,10 +168,12 @@ fn validate_binding(binding: &ShortcutBinding) -> Result<(), String> {
     }
     if code == "alt_gr" || (cfg!(target_os = "windows") && code == "control_right") {
         if !modifier_set.is_empty() {
-            return Err(
-                "Десният Option/Alt или Ctrl се използва самостоятелно, без допълнителни модификатори."
-                    .into(),
-            );
+            return Err(if code == "control_right" {
+                "Десният Ctrl се използва самостоятелно, без допълнителни модификатори."
+            } else {
+                "Десният Option/Alt се използва самостоятелно, без допълнителни модификатори."
+            }
+            .into());
         }
         return Ok(());
     }
@@ -215,9 +228,9 @@ pub fn install(app: AppHandle) {
     let processor_app = app.clone();
     std::thread::spawn(move || process_events(processor_app, receiver));
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     let keyboard_sender = sender.clone();
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     std::thread::spawn(move || {
         let result = rdev::listen(move |event| {
             let translated = match event.event_type {
@@ -242,8 +255,6 @@ pub fn install(app: AppHandle) {
 
     #[cfg(target_os = "macos")]
     install_macos_input_listener(sender);
-    #[cfg(target_os = "windows")]
-    windows_input::install(sender);
 }
 
 fn process_events(app: AppHandle, receiver: Receiver<InputEvent>) {
@@ -269,8 +280,6 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
     };
     #[cfg(not(target_os = "macos"))]
     let InputEvent::Key { code, pressed } = event;
-    #[cfg(target_os = "windows")]
-    windows_input::trace("processed", code, pressed);
     if code == "alt_gr" {
         crate::storage::append_shortcut_diagnostic(if pressed {
             "right-option down received"
@@ -281,17 +290,14 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
     if pressed {
         runtime.modifiers.update(code, true);
     }
-    if !pressed && runtime.captured_keys.remove(code) {
-        runtime.modifiers.update(code, false);
-        return;
-    }
-    if runtime.captured_keys.contains(code) {
-        return;
-    }
-    if capture_is_active(app) {
-        if pressed && (!is_modifier_code(code) || code == "alt_gr") {
-            runtime.captured_keys.insert(code.to_string());
+    let capturing = capture_is_active(app);
+    if runtime.consume_capture_event(code, pressed, capturing) {
+        if !pressed {
+            runtime.modifiers.update(code, false);
         }
+        return;
+    }
+    if capturing {
         process_capture_key(app, &runtime.modifiers, code, pressed);
         if !pressed {
             runtime.modifiers.update(code, false);
@@ -569,7 +575,7 @@ fn key_code_values() -> &'static [&'static str] {
     ]
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(target_os = "macos"))]
 fn key_code(key: rdev::Key) -> Option<&'static str> {
     use rdev::Key::*;
     Some(match key {
