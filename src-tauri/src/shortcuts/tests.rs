@@ -78,10 +78,33 @@ fn listener_reset_releases_stale_push_to_talk_state() {
             ..ModifierState::default()
         },
         dictation_trigger: Some(InputTrigger::Key("alt_gr".into())),
+        captured_keys: BTreeSet::from(["f8".into()]),
     };
 
     assert!(runtime.reset_stale_inputs());
     assert!(runtime.dictation_trigger.is_none());
+    assert!(runtime.captured_keys.is_empty());
     assert!(runtime.modifiers.names_for("key_a").is_empty());
     assert!(!runtime.reset_stale_inputs());
+}
+
+#[test]
+fn captured_key_cannot_start_dictation_until_released() {
+    for code in ["f8", "alt_gr", "key_a"] {
+        let mut runtime = ShortcutRuntime::default();
+        assert!(!runtime.consume_capture_event(code, true, true));
+        assert!(runtime.consume_capture_event(code, true, false));
+        assert!(runtime.consume_capture_event(code, false, false));
+        assert!(!runtime.consume_capture_event(code, true, false));
+        assert!(!runtime.consume_capture_event(code, false, false));
+    }
+}
+
+#[test]
+fn modifier_chords_remain_available_during_capture() {
+    let mut runtime = ShortcutRuntime::default();
+    assert!(!runtime.consume_capture_event("control_left", true, true));
+    assert!(!runtime.consume_capture_event("key_k", true, true));
+    assert!(runtime.consume_capture_event("key_k", false, false));
+    assert!(!runtime.consume_capture_event("control_left", false, false));
 }

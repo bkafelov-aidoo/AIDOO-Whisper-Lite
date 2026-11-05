@@ -105,13 +105,28 @@ impl ModifierState {
 struct ShortcutRuntime {
     modifiers: ModifierState,
     dictation_trigger: Option<InputTrigger>,
+    captured_keys: BTreeSet<String>,
 }
 
 impl ShortcutRuntime {
+    fn consume_capture_event(&mut self, code: &str, pressed: bool, capturing: bool) -> bool {
+        if !pressed && self.captured_keys.remove(code) {
+            return true;
+        }
+        if self.captured_keys.contains(code) {
+            return true;
+        }
+        if capturing && pressed && (!is_modifier_code(code) || code == "alt_gr") {
+            self.captured_keys.insert(code.to_string());
+        }
+        false
+    }
+
     #[cfg(target_os = "macos")]
     fn reset_stale_inputs(&mut self) -> bool {
         let dictation_was_active = self.dictation_trigger.take().is_some();
         self.modifiers = ModifierState::default();
+        self.captured_keys.clear();
         dictation_was_active
     }
 }
@@ -247,7 +262,14 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
     if pressed {
         runtime.modifiers.update(code, true);
     }
-    if capture_is_active(app) {
+    let capturing = capture_is_active(app);
+    if runtime.consume_capture_event(code, pressed, capturing) {
+        if !pressed {
+            runtime.modifiers.update(code, false);
+        }
+        return;
+    }
+    if capturing {
         process_capture_key(app, &runtime.modifiers, code, pressed);
         if !pressed {
             runtime.modifiers.update(code, false);
