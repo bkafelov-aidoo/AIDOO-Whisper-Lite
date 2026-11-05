@@ -1,3 +1,4 @@
+import { useSettingsAutosave } from "./hooks/useSettingsAutosave";
 import { settingsForCommand } from "./lib/settings-contract";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -36,7 +37,22 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 4200);
   }, []);
 
+  const autosave = useSettingsAutosave(async (settings) => {
+    const previous = await isEnabled();
+    const changed = previous !== settings.launchAtLogin;
+    if (changed) { if (settings.launchAtLogin) await enable(); else await disable(); }
+    try {
+      const saved = await invoke<AppSettings>("update_settings", { settings: settingsForCommand(settings) });
+      setData(current => current ? { ...current, settings: saved } : current);
+      return saved;
+    } catch (reason) {
+      if (changed) { try { if (previous) await enable(); else await disable(); } catch { /* Preserve the save error. */ } }
+      throw reason;
+    }
+  }, (reason) => showToast(reason ? errorMessage(reason, languageRef.current) : translator(languageRef.current)("saved"), reason ? "error" : "success"));
+
   const refresh = useCallback(async () => {
+    const revision = autosave.revision;
     try {
       const nativeState = await invoke<BootstrapState>("bootstrap");
       let next = nativeState;
@@ -46,6 +62,7 @@ export default function App() {
           next = { ...nativeState, settings: { ...nativeState.settings, launchAtLogin } };
         }
       } catch { /* Keep the last persisted value when macOS cannot report Login Item state. */ }
+      autosave.receive(next.settings, revision);
       setData((current) => current && settingsMatch(current.settings, next.settings) ? { ...next, settings: current.settings } : next);
       setBootstrapError(null);
       return next;
@@ -53,7 +70,7 @@ export default function App() {
       setBootstrapError(String(reason).replace(/^Error:\s*/, ""));
       throw reason;
     }
-  }, []);
+  }, [autosave]);
 
   useEffect(() => {
     void refresh()
@@ -92,20 +109,21 @@ export default function App() {
 
   const modelCatalog = useModelCatalog(data?.hasApiKey ?? false, data?.apiKeyStatus?.checkedAt);
 
-  const language = resolveLanguage(data?.settings.uiLanguage ?? "auto");
+  const language = resolveLanguage(autosave.draft?.uiLanguage ?? data?.settings.uiLanguage ?? "auto");
   languageRef.current = language;
   const t = translator(language);
 
-  const persistSettings = useCallback(async (settings: AppSettings) => {
-    const saved = await invoke<AppSettings>("update_settings", { settings: settingsForCommand(settings) });
-    setData((current) => current ? { ...current, settings: saved } : current);
-    return saved;
-  }, []);
+  const persistSettings = async (settings: AppSettings) => {
+    autosave.change(settings, autosave.draft!);
+    await autosave.flush();
+    return autosave.draft!;
+  };
 
   if (!data) {
     return <main className="loading-screen"><img src="/app-icon.png" alt="" />{bootstrapError ? <><p>{t("loadFailed")}</p><small>{bootstrapError}</small><button className="primary-button" onClick={() => void refresh().catch(() => undefined)}><RefreshCw />{t("retryLoad")}</button></> : <LoaderCircle className="spin" />}</main>;
   }
 
+  const draft = autosave.draft ?? data.settings;
   const shortcut = formatShortcut(data.settings.dictationShortcut);
   const isBusy = ["starting", "recording", "transcribing"].includes(data.recording.state);
   const status = appStatus(data, language);
@@ -201,29 +219,10 @@ export default function App() {
             modelLoading={modelCatalog.loading}
             language={language}
             isBusy={isBusy}
-            onSave={async (settings) => {
-              try {
-                const previousLaunchAtLogin = await isEnabled();
-                const launchAtLoginChanged = previousLaunchAtLogin !== settings.launchAtLogin;
-                if (launchAtLoginChanged) {
-                  if (settings.launchAtLogin) await enable(); else await disable();
-                }
-                try {
-                  await persistSettings(settings);
-                } catch (reason) {
-                  if (launchAtLoginChanged) {
-                    try {
-                      if (previousLaunchAtLogin) await enable(); else await disable();
-                    } catch { /* The original error is more useful to the user. */ }
-                  }
-                  throw reason;
-                }
-                showToast(t("saved"));
-              } catch (reason) {
-                showToast(errorMessage(reason, language), "error");
-                throw reason;
-              }
-            }}
+            draft={draft}
+            onChange={(edit) => autosave.change(edit, draft)}
+            onFlush={autosave.flush}
+            saveError={autosave.error ? errorMessage(autosave.error, language) : null}
             onRefresh={refresh}
             onToast={showToast}
             onOpenOnboarding={() => setShowOnboarding(true)}
@@ -236,6 +235,9 @@ export default function App() {
           data={data}
           language={language}
           isBusy={isBusy}
+          draft={draft}
+          onChange={(edit) => autosave.change(edit, draft)}
+          onFlush={autosave.flush}
           onData={setData}
           onPersist={persistSettings}
           onRefresh={refresh}

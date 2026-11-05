@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "check": "tsc --noEmit && npm run check:settings-contract && npm run check:model-catalog && npm run check:structure && npm run check:i18n && npm run check:release-config && npm run check:macos-dependencies && npm run check:website && npm run check:windows",
+    "check": "tsc --noEmit && npm run check:settings-autosave && npm run check:settings-contract && npm run check:model-catalog && npm run check:structure && npm run check:i18n && npm run check:release-config && npm run check:macos-dependencies && npm run check:website && npm run check:windows",
     "check:structure": "python3 scripts/check-source-layout.py",
     "check:i18n": "node scripts/check-i18n-errors.mjs",
     "check:release-config": "python3 scripts/check-release-config.py",
@@ -24,7 +24,8 @@
     "bundle:windows:signed": "tauri build --target x86_64-pc-windows-msvc --bundles nsis --ci --config src-tauri/tauri.windows-signing.conf.json -- --locked",
     "check:windows": "python3 scripts/check-windows-config.py && node scripts/test-windows-webview-target.mjs",
     "check:settings-contract": "node scripts/check-settings-contract.mjs",
-    "check:model-catalog": "node scripts/check-model-catalog.mjs"
+    "check:model-catalog": "node scripts/check-model-catalog.mjs",
+    "check:settings-autosave": "node scripts/check-settings-autosave.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

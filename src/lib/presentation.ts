@@ -28,6 +28,7 @@ export function appStatus(data: BootstrapState, language: AppLanguage): { tone: 
 }
 export function formatShortcut(binding: ShortcutBinding) {
   if (binding.code === "alt_gr") return isWindows ? "Right Alt" : "⌥ Right";
+  if (isWindows && binding.code === "control_right") return "Right Ctrl";
   const names: Record<string, string> = isWindows
     ? { meta: "Win", shift: "Shift", alt: "Alt", control: "Ctrl", fn: "Fn" }
     : { meta: "⌘", shift: "⇧", alt: "⌥", control: "⌃", fn: "fn" };

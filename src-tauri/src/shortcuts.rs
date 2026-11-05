@@ -9,6 +9,9 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{atomic::AtomicBool, mpsc::Sender, Arc};
 use tauri::{AppHandle, Emitter, Manager};
 
+#[cfg(target_os = "windows")]
+mod windows_input;
+
 const TARGET_DICTATION: &str = "dictation";
 #[cfg(target_os = "macos")]
 const MACOS_EVENT_TAP_OPTIONS: u32 = 0; // kCGEventTapOptionDefault (Accessibility)
@@ -127,6 +130,7 @@ impl ModifierState {
 struct ShortcutRuntime {
     modifiers: ModifierState,
     dictation_trigger: Option<InputTrigger>,
+    captured_keys: BTreeSet<String>,
 }
 
 impl ShortcutRuntime {
@@ -151,10 +155,10 @@ fn validate_binding(binding: &ShortcutBinding) -> Result<(), String> {
     if code == "escape" {
         return Err("Escape е запазен и не може да бъде shortcut за диктовка.".into());
     }
-    if code == "alt_gr" {
+    if code == "alt_gr" || (cfg!(target_os = "windows") && code == "control_right") {
         if !modifier_set.is_empty() {
             return Err(
-                "Десният Option/Alt се използва самостоятелно, без допълнителни модификатори."
+                "Десният Option/Alt или Ctrl се използва самостоятелно, без допълнителни модификатори."
                     .into(),
             );
         }
@@ -211,9 +215,9 @@ pub fn install(app: AppHandle) {
     let processor_app = app.clone();
     std::thread::spawn(move || process_events(processor_app, receiver));
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let keyboard_sender = sender.clone();
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     std::thread::spawn(move || {
         let result = rdev::listen(move |event| {
             let translated = match event.event_type {
@@ -238,6 +242,8 @@ pub fn install(app: AppHandle) {
 
     #[cfg(target_os = "macos")]
     install_macos_input_listener(sender);
+    #[cfg(target_os = "windows")]
+    windows_input::install(sender);
 }
 
 fn process_events(app: AppHandle, receiver: Receiver<InputEvent>) {
@@ -261,7 +267,7 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
     else {
         return;
     };
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let InputEvent::Key { code, pressed } = event;
     if code == "alt_gr" {
         crate::storage::append_shortcut_diagnostic(if pressed {
@@ -273,7 +279,17 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
     if pressed {
         runtime.modifiers.update(code, true);
     }
+    if !pressed && runtime.captured_keys.remove(code) {
+        runtime.modifiers.update(code, false);
+        return;
+    }
+    if runtime.captured_keys.contains(code) {
+        return;
+    }
     if capture_is_active(app) {
+        if pressed && !is_modifier_code(code) || pressed && code == "alt_gr" {
+            runtime.captured_keys.insert(code.to_string());
+        }
         process_capture_key(app, &runtime.modifiers, code, pressed);
         if !pressed {
             runtime.modifiers.update(code, false);
@@ -295,7 +311,8 @@ fn capture_is_active(app: &AppHandle) -> bool {
 }
 
 fn process_capture_key(app: &AppHandle, modifiers: &ModifierState, code: &str, pressed: bool) {
-    if !pressed {
+    let right_ctrl_release = cfg!(target_os = "windows") && code == "control_right" && !pressed;
+    if !pressed && !right_ctrl_release {
         return;
     }
     if code == "escape" {
@@ -311,7 +328,7 @@ fn process_capture_key(app: &AppHandle, modifiers: &ModifierState, code: &str, p
         }
         return;
     }
-    if is_modifier_code(code) && code != "alt_gr" {
+    if is_modifier_code(code) && code != "alt_gr" && !right_ctrl_release {
         return;
     }
     let modifier_names = modifiers
@@ -550,7 +567,7 @@ fn key_code_values() -> &'static [&'static str] {
     ]
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn key_code(key: rdev::Key) -> Option<&'static str> {
     use rdev::Key::*;
     Some(match key {

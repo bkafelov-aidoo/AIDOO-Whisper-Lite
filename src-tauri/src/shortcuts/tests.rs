@@ -97,10 +97,22 @@ fn listener_reset_releases_stale_push_to_talk_state() {
             ..ModifierState::default()
         },
         dictation_trigger: Some(InputTrigger::Key("alt_gr".into())),
+        captured_keys: BTreeSet::new(),
     };
 
     assert!(runtime.reset_stale_inputs());
     assert!(runtime.dictation_trigger.is_none());
     assert!(runtime.modifiers.names_for("key_a").is_empty());
     assert!(!runtime.reset_stale_inputs());
+}
+
+#[test]
+#[cfg(target_os = "windows")]
+fn right_control_is_supported_without_a_chord() {
+    assert!(validate_binding(&ShortcutBinding::key("control_right", &[])).is_ok());
+    assert!(binding_matches_key(
+        &ShortcutBinding::key("control_right", &[]),
+        "control_right",
+        &BTreeSet::new()
+    ));
 }

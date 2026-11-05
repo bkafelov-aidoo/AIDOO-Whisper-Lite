@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { isEnabled } from "@tauri-apps/plugin-autostart";
+import type { SettingsEdit } from "../lib/settings-autosave";
 import { AudioLines, Check, CircleArrowRight, CircleHelp, ExternalLink, FileText, FolderOpen, KeyRound, Languages, LoaderCircle, Mic, Power, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { errorMessage, translator } from "../i18n";
 import { type AppLanguage, type AppSettings, type BootstrapState, type MicrophoneProbe, type CatalogModelOption, type ApiKeyStatus } from "../types";
@@ -10,7 +10,7 @@ import { type ToastHandler } from "../ui-types";
 import { formatShortcut } from "../lib/presentation";
 import { SettingsSection, SettingRow, Toggle, LanguagePicker, StorageControls, InterfaceLanguageButtons } from "../components/SettingsControls";
 import { useShortcutCapture } from "../hooks/useShortcutCapture";
-import { VocabularyEditor, vocabularyIssue } from "../components/VocabularyEditor";
+import { VocabularyEditor } from "../components/VocabularyEditor";
 
 import { ModelSelector } from "../components/ModelSelector";
 import { ApiKeyHealth } from "../components/ApiKeyHealth";
@@ -19,19 +19,21 @@ import { isWindows, credentialHelp, microphonePrivacyHelp } from "../lib/platfor
 
 const SUPPORT_EMAIL_URL = "mailto:support@aidoo.bg";
 
-export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToast, onOpenOnboarding, models, modelLoading }: {
+export function SettingsPage({ data, language, isBusy, draft, onChange: setDraft, onFlush, saveError, onRefresh, onToast, onOpenOnboarding, models, modelLoading }: {
   models: CatalogModelOption[];
   modelLoading: boolean;
   data: BootstrapState;
   language: AppLanguage;
   isBusy: boolean;
-  onSave: (settings: AppSettings) => Promise<void>;
+  draft: AppSettings;
+  onChange: (edit: SettingsEdit) => void;
+  onFlush: () => Promise<void>;
+  saveError: string | null;
   onRefresh: () => Promise<BootstrapState>;
   onToast: ToastHandler;
   onOpenOnboarding: () => void;
 }) {
   const t = translator(language);
-  const [draft, setDraft] = useState(data.settings);
   const [apiKey, setApiKey] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
   const [shortcutBusy, setShortcutBusy] = useState(false);
@@ -41,31 +43,9 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
   const [checkKeyBusy, setCheckKeyBusy] = useState(false);
   const [health, setHealth] = useState(data.apiKeyStatus);
   useEffect(() => setHealth(data.apiKeyStatus), [data.apiKeyStatus]);
-  const [saveBusy, setSaveBusy] = useState(false);
-  const launchAtLoginDirty = useRef(false);
-  const controlsDisabled = isBusy || keyBusy || shortcutBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy || checkKeyBusy;
-  const shortcutButtonDisabled = isBusy || keyBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || saveBusy || checkKeyBusy;
+  const controlsDisabled = isBusy || keyBusy || shortcutBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || checkKeyBusy;
+  const shortcutButtonDisabled = isBusy || keyBusy || diagnosticBusy || microphoneBusy || accessibilityBusy || checkKeyBusy;
   useShortcutCapture(shortcutBusy, setShortcutBusy, (binding) => setDraft((current) => ({ ...current, dictationShortcut: binding })), (message) => onToast(errorMessage(message, language), "error"));
-
-  useEffect(() => {
-    launchAtLoginDirty.current = false;
-    setDraft(data.settings);
-  }, [data.settings]);
-  useEffect(() => {
-    let disposed = false;
-    const refreshLaunchAtLogin = () => {
-      void isEnabled().then((enabled) => {
-        if (disposed || launchAtLoginDirty.current) return;
-        setDraft((current) => ({ ...current, launchAtLogin: enabled }));
-      }).catch(() => undefined);
-    };
-    refreshLaunchAtLogin();
-    window.addEventListener("focus", refreshLaunchAtLogin);
-    return () => {
-      disposed = true;
-      window.removeEventListener("focus", refreshLaunchAtLogin);
-    };
-  }, [data.settings.launchAtLogin]);
 
   const chooseFolder = async () => {
     try {
@@ -78,10 +58,10 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
 
   return <div className="page settings-page"><header className="page-header"><div><span className="eyebrow">AIDOO WHISPER LITE</span><h1>{t("settings")}</h1><p>{t("version")} {data.appVersion}</p></div><button className="secondary-button" disabled={controlsDisabled} title={isBusy ? t("finishDictationFirst") : undefined} onClick={onOpenOnboarding}><CircleArrowRight />{t("openOnboarding")}</button></header>
     <SettingsSection icon={<KeyRound />} title={t("apiTitle")}>
-      <ApiKeyHealth hasKey={data.hasApiKey} status={health} language={language} checking={checkKeyBusy} disabled={controlsDisabled} onCheck={() => { setCheckKeyBusy(true); void invoke<ApiKeyStatus>("check_api_key").then(setHealth).catch(() => setHealth({ phase: "unavailable", checkedAt: null, lastSuccessAt: health?.lastSuccessAt ?? null })).finally(() => setCheckKeyBusy(false)); }} />
+      <ApiKeyHealth hasKey={data.hasApiKey} status={health} language={language} checking={checkKeyBusy} disabled={controlsDisabled} onCheck={() => { setCheckKeyBusy(true); void onFlush().then(() => invoke<ApiKeyStatus>("check_api_key")).then(setHealth).catch(() => setHealth({ phase: "unavailable", checkedAt: null, lastSuccessAt: health?.lastSuccessAt ?? null })).finally(() => setCheckKeyBusy(false)); }} />
       <p className="section-help">{credentialHelp(language) ?? t("apiHelp")}</p><p className="instruction-note"><CircleHelp />{t("apiSteps")}</p>
-      <div className="api-row"><input type="password" aria-label={t("apiTitle")} autoComplete="new-password" spellCheck={false} value={apiKey} disabled={controlsDisabled} onChange={(event) => setApiKey(event.target.value)} placeholder={data.hasApiKey ? "••••••••••••••••••" : "sk-…"} /><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl("https://platform.openai.com/api-keys"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("createKey")}</button><button className="primary-button" disabled={controlsDisabled || !apiKey.trim()} onClick={async () => { setKeyBusy(true); try { await invoke("save_api_key", { apiKey }); setApiKey(""); await onRefresh(); onToast(t("keySaved")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{keyBusy ? <LoaderCircle className="spin" /> : <ShieldCheck />}{t("verifySave")}</button></div>
-      {data.hasApiKey && <button className="text-button danger" disabled={controlsDisabled} onClick={async () => { setKeyBusy(true); try { await invoke("delete_api_key"); await onRefresh(); onToast(t("deleted")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{t("removeKey")}</button>}
+      <div className="api-row"><input type="password" aria-label={t("apiTitle")} autoComplete="new-password" spellCheck={false} value={apiKey} disabled={controlsDisabled} onChange={(event) => setApiKey(event.target.value)} placeholder={data.hasApiKey ? "••••••••••••••••••" : "sk-…"} /><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl("https://platform.openai.com/api-keys"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("createKey")}</button><button className="primary-button" disabled={controlsDisabled || !apiKey.trim()} onClick={async () => { setKeyBusy(true); try { await onFlush(); await invoke("save_api_key", { apiKey }); setApiKey(""); await onRefresh(); onToast(t("keySaved")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{keyBusy ? <LoaderCircle className="spin" /> : <ShieldCheck />}{t("verifySave")}</button></div>
+      {data.hasApiKey && <button className="text-button danger" disabled={controlsDisabled} onClick={async () => { setKeyBusy(true); try { await onFlush(); await invoke("delete_api_key"); await onRefresh(); onToast(t("deleted")); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setKeyBusy(false); } }}>{t("removeKey")}</button>}
     </SettingsSection>
     <ModelSelector settings={draft} models={models} language={language} disabled={controlsDisabled} loading={modelLoading} onChange={setDraft} />
     <SettingsSection icon={<Languages />} title={t("modelLanguage")}>
@@ -92,20 +72,20 @@ export function SettingsPage({ data, language, isBusy, onSave, onRefresh, onToas
     <SettingsSection icon={<Mic />} title={t("microphone")}>
       <SettingRow title={t("microphone")}><select aria-label={t("microphone")} value={draft.microphoneName ?? ""} disabled={controlsDisabled} onChange={(event) => setDraft({ ...draft, microphoneName: event.target.value || null })}><option value="">{t("systemDefault")}</option>{data.microphones.map((item) => <option key={item} value={item}>{item}</option>)}</select></SettingRow>
       <SettingRow title={t("automaticMicrophoneFallback")} detail={t("automaticMicrophoneFallbackHelp")}><Toggle label={t("automaticMicrophoneFallback")} checked={draft.automaticMicrophoneFallback} disabled={controlsDisabled} onChange={(automaticMicrophoneFallback) => setDraft({ ...draft, automaticMicrophoneFallback })} /></SettingRow>
-      <SettingRow title={t("testMicrophone")} detail={t("microphoneTestHelp")}><button className="secondary-button" disabled={controlsDisabled || !data.microphones.length} onClick={async () => { setMicrophoneBusy(true); try { const probe = await invoke<MicrophoneProbe>("test_microphone", { microphoneName: draft.microphoneName, automaticFallback: draft.automaticMicrophoneFallback }); if (!probe.heardAudio) throw new Error(t("microphoneSilent")); onToast(probe.usedFallback ? t("microphoneFallback", { name: probe.deviceName }) : t("microphoneOk"), probe.usedFallback ? "warning" : "success"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setMicrophoneBusy(false); } }}>{microphoneBusy ? <LoaderCircle className="spin" /> : <AudioLines />}{t("testMicrophone")}</button></SettingRow>
+      <SettingRow title={t("testMicrophone")} detail={t("microphoneTestHelp")}><button className="secondary-button" disabled={controlsDisabled || !data.microphones.length} onClick={async () => { setMicrophoneBusy(true); try { await onFlush(); const probe = await invoke<MicrophoneProbe>("test_microphone", { microphoneName: draft.microphoneName, automaticFallback: draft.automaticMicrophoneFallback }); if (!probe.heardAudio) throw new Error(t("microphoneSilent")); onToast(probe.usedFallback ? t("microphoneFallback", { name: probe.deviceName }) : t("microphoneOk"), probe.usedFallback ? "warning" : "success"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setMicrophoneBusy(false); } }}>{microphoneBusy ? <LoaderCircle className="spin" /> : <AudioLines />}{t("testMicrophone")}</button></SettingRow>
       {isWindows ? <SettingRow title={language === "bg" ? "Достъп до микрофона" : "Microphone privacy"} detail={microphonePrivacyHelp(language)}><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await invoke("open_accessibility_settings"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{language === "bg" ? "Отвори Windows Settings" : "Open Windows Settings"}</button></SettingRow> : <SettingRow title={t("accessibility")} detail={data.accessibilityGranted ? t("ready") : t("accessibilityHelp")}><div className="inline-actions"><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await invoke("open_accessibility_settings"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}>{t("grant")}</button><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { setAccessibilityBusy(true); try { await invoke("refresh_accessibility_status"); await onRefresh(); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setAccessibilityBusy(false); } }}>{accessibilityBusy ? <LoaderCircle className="spin" /> : data.accessibilityGranted ? <Check /> : <RefreshCw />}{t("refresh")}</button></div></SettingRow>}
-      <SettingRow title={t("shortcut")} detail={formatShortcut(draft.dictationShortcut)}><button className="secondary-button" disabled={shortcutButtonDisabled} onClick={async () => { if (shortcutBusy) { try { await invoke("cancel_shortcut_capture"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setShortcutBusy(false); } return; } setShortcutBusy(true); try { await invoke("begin_shortcut_capture"); } catch (reason) { setShortcutBusy(false); onToast(errorMessage(reason, language), "error"); } }}>{shortcutBusy ? <X /> : null}{shortcutBusy ? t("cancel") : t("changeShortcut")}</button></SettingRow>
+      <SettingRow title={t("shortcut")} detail={formatShortcut(draft.dictationShortcut)}><button className="secondary-button" disabled={shortcutButtonDisabled} onClick={async () => { if (shortcutBusy) { try { await invoke("cancel_shortcut_capture"); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setShortcutBusy(false); } return; } setShortcutBusy(true); try { await onFlush(); await invoke("begin_shortcut_capture"); } catch (reason) { setShortcutBusy(false); onToast(errorMessage(reason, language), "error"); } }}>{shortcutBusy ? <X /> : null}{shortcutBusy ? t("cancel") : t("changeShortcut")}</button></SettingRow>
       <SettingRow title={t("autoPaste")} detail={t("autoPasteHelp")}><Toggle label={t("autoPaste")} checked={draft.autoPaste} disabled={controlsDisabled} onChange={(autoPaste) => setDraft({ ...draft, autoPaste })} /></SettingRow>
     </SettingsSection>
     <SettingsSection icon={<FolderOpen />} title={t("storage")}>
       <StorageControls settings={draft} language={language} outputPath={draft.outputDirectory ?? data.defaultOutputDirectory} disabled={controlsDisabled} onChange={setDraft} onChooseFolder={chooseFolder} />
     </SettingsSection>
     <SettingsSection icon={<Power />} title={t("startup")}>
-      <SettingRow title={t("launchAtLogin")}><Toggle label={t("launchAtLogin")} checked={draft.launchAtLogin} disabled={controlsDisabled} onChange={(launchAtLogin) => { launchAtLoginDirty.current = true; setDraft({ ...draft, launchAtLogin }); }} /></SettingRow>
+      <SettingRow title={t("launchAtLogin")}><Toggle label={t("launchAtLogin")} checked={draft.launchAtLogin} disabled={controlsDisabled} onChange={(launchAtLogin) => { setDraft({ ...draft, launchAtLogin }); }} /></SettingRow>
     </SettingsSection>
     <SettingsSection icon={<ShieldCheck />} title={t("diagnostics")}>
-      <p className="section-help">{t("diagnosticsHelp")}</p><div className="inline-actions"><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { setDiagnosticBusy(true); try { const path = await invoke<string>("create_diagnostic_bundle"); await invoke("open_local_path", { path, reveal: true }); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setDiagnosticBusy(false); } }}>{diagnosticBusy ? <LoaderCircle className="spin" /> : <FileText />}{t("createDiagnostics")}</button><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl(SUPPORT_EMAIL_URL); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("openSupport")}</button></div>
+      <p className="section-help">{t("diagnosticsHelp")}</p><div className="inline-actions"><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { setDiagnosticBusy(true); try { await onFlush(); const path = await invoke<string>("create_diagnostic_bundle"); await invoke("open_local_path", { path, reveal: true }); } catch (reason) { onToast(errorMessage(reason, language), "error"); } finally { setDiagnosticBusy(false); } }}>{diagnosticBusy ? <LoaderCircle className="spin" /> : <FileText />}{t("createDiagnostics")}</button><button className="secondary-button" disabled={controlsDisabled} onClick={async () => { try { await openUrl(SUPPORT_EMAIL_URL); } catch (reason) { onToast(errorMessage(reason, language), "error"); } }}><ExternalLink />{t("openSupport")}</button></div>
     </SettingsSection>
-    <footer className="settings-footer"><button className="primary-button large" disabled={controlsDisabled || Boolean(vocabularyIssue(draft.vocabularyTerms))} title={isBusy ? t("finishDictationFirst") : undefined} onClick={async () => { setSaveBusy(true); try { await onSave(draft); launchAtLoginDirty.current = false; } catch { /* The parent already showed the localized error. */ } finally { setSaveBusy(false); } }}>{saveBusy ? <LoaderCircle className="spin" /> : <Check />}{t("save")}</button></footer>
+    {saveError && <div className="field-error" role="alert">{saveError} <button className="secondary-button" disabled={controlsDisabled} onClick={() => void onFlush().catch(() => undefined)}>{t("retryLoad")}</button></div>}
   </div>;
 }
