@@ -11,8 +11,9 @@ public static class ShortcutInput {
   [StructLayout(LayoutKind.Sequential)] public struct KeyInput { public ushort vk; public ushort scan; public uint flags; public uint time; public UIntPtr extra; }
   [StructLayout(LayoutKind.Explicit, Size=40)] public struct Input { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KeyInput key; }
   [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, Input[] input, int size);
+  [DllImport("user32.dll")] public static extern uint MapVirtualKeyW(uint code, uint mapType);
   public static void Press(ushort vk, uint flags) {
-    var input = new Input { type=1, key=new KeyInput { vk=vk, flags=flags } };
+    var input = new Input { type=1, key=new KeyInput { vk=vk, scan=(ushort)MapVirtualKeyW(vk,0), flags=flags|8 } };
     if(SendInput(1, new[]{input}, 40)!=1) throw new Exception("Synthetic input was rejected.");
   }
 }
