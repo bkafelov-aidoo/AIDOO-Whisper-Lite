@@ -63,6 +63,7 @@ export default function App() {
         }
       } catch { /* Keep the last persisted value when macOS cannot report Login Item state. */ }
       autosave.receive(next.settings, revision);
+      next = { ...next, settings: autosave.saved ?? next.settings };
       setData((current) => current && settingsMatch(current.settings, next.settings) ? { ...next, settings: current.settings } : next);
       setBootstrapError(null);
       return next;
@@ -133,6 +134,7 @@ export default function App() {
       if (data.recording.state === "recording") {
         await invoke("stop_and_transcribe");
       } else {
+        await autosave.flush();
         await invoke("start_recording");
       }
     } catch (reason) {

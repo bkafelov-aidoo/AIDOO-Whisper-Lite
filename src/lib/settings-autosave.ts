@@ -22,7 +22,7 @@ export class SettingsAutosave {
     if (this.draft && (revision !== this.revision || this.running || this.error)) return;
     const terms = this.draft?.vocabularyTerms;
     this.saved = settings;
-    this.draft = terms && same(normalizeTerms(terms), settings.vocabularyTerms) ? { ...settings, vocabularyTerms: terms } : settings;
+    this.draft = terms && (vocabularyIssue(terms) || same(normalizeTerms(terms), settings.vocabularyTerms)) ? { ...settings, vocabularyTerms: terms } : settings;
     this.emit();
   }
   change(edit: SettingsEdit, base: AppSettings) {
