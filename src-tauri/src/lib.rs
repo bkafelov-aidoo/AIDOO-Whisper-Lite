@@ -235,7 +235,12 @@ fn install_tray(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Tao's Raw Input registration suppresses same-process low-level keyboard hooks while
+    // our WebView has focus. We use the dedicated shortcut listener, not device events.
+    #[cfg(target_os = "windows")]
+    let builder = builder.device_event_filter(tauri::DeviceEventFilter::Always);
+    let app = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
