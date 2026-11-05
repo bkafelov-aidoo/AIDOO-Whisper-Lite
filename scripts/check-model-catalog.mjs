@@ -104,9 +104,10 @@ try {
   };
   let closed = 0;
   function DialogProbe() {
+    const [draft, setDraft] = React.useState(fixture.settings);
     const [opened, setOpened] = React.useState(true);
     return opened ? React.createElement(Onboarding, {
-      data: fixture, language: "en", isBusy: false, onData: () => {}, onPersist: async (draft) => draft,
+      draft, onChange: setDraft, onFlush: async () => {}, data: fixture, language: "en", isBusy: false, onData: () => {}, onPersist: async (draft) => draft,
       onRefresh: async () => fixture, onClose: () => { closed += 1; setOpened(false); }, onToast: () => {},
     }) : null;
   }
