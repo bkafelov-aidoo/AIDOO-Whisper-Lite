@@ -178,6 +178,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           path: release/windows-ci/startup-failure.json
+      - name: Preserve a failed build candidate for separate verification
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Windows-build-candidate-UNVERIFIED
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            release/windows-ci/signed-application/
+            release/windows-ci/app-signature.json
+            release/windows-ci/signature-verification.json
+            release/shortcut-repro/results.json
       - name: Upload the verified signed installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

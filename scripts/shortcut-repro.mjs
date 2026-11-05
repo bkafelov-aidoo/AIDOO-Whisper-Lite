@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { installedMainTarget } from './windows-webview-target.mjs';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const result = { tests: [], noMicrophoneOrApi: true };
+const result = { tests: [], noMicrophoneOrApi: true, windowSelection: [] };
 let socket;
 try {
   let page; const deadline = Date.now() + 90_000;
@@ -24,12 +24,13 @@ try {
   result.phase='subscribe';
   await evaluate(`(async()=>{window.__shortcutProbe={events:[],domCodes:[]};window.addEventListener('keydown',event=>{if(['F8','F9','ControlRight','Numpad0','Insert'].includes(event.code))window.__shortcutProbe.domCodes.push(event.code);});const api=window.__TAURI_INTERNALS__;for(const event of ['shortcut:captured','shortcut:capture-error','recording:state','settings:changed']){const handler=api.transformCallback(e=>window.__shortcutProbe.events.push({event,payload:e.payload}));await api.invoke('plugin:event|listen',{event,target:{kind:'Any'},handler});}return true;})()`);
   const native=command=>evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)})`);
-  const press=code=>execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',new URL('./shortcut-input-fixture.ps1',import.meta.url).pathname.replace(/^\/(\w:)/,'$1'),'-Code',code],{stdio:'pipe',windowsHide:true});
+  const press=code=>result.windowSelection.push({code,...JSON.parse(execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',new URL('./shortcut-input-fixture.ps1',import.meta.url).pathname.replace(/^\/(\w:)/,'$1'),'-Code',code],{stdio:'pipe',windowsHide:true,encoding:'utf8'}))});
   result.phase='bootstrap';
   const initial=await native('bootstrap');
   if(initial.settings.onboardingComplete || initial.hasApiKey)throw new Error('Fixture must have no configured dictation or real API key.');
   result.phase='event-channel';
-  await evaluate(`window.__TAURI_INTERNALS__.invoke('update_settings',{settings:${JSON.stringify(initial.settings)}})`);await pause(100);
+  const fixtureSettings={...initial.settings,dictationShortcut:{kind:'key',code:'f8',modifiers:[]}};
+  await evaluate(`window.__TAURI_INTERNALS__.invoke('update_settings',{settings:${JSON.stringify(fixtureSettings)}})`);await pause(100);
   result.eventChannelWorks=await evaluate(`window.__shortcutProbe.events.some(e=>e.event==='settings:changed')`);
   result.phase='foreground-f8';
   await evaluate('window.__shortcutProbe.events=[]');press('f8');await pause(600);

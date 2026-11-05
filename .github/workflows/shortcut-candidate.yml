@@ -27,6 +27,7 @@ jobs:
           key: windows-shortcut-debug-rust-1.93.1-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
             windows-shortcut-debug-rust-1.93.1-${{ hashFiles('src-tauri/Cargo.lock') }}-
+            windows-shortcut-debug-rust-1.93.1-
             windows-2022-rust-1.93.1-${{ hashFiles('src-tauri/Cargo.lock') }}-
       - run: cargo install cargo-audit --version 0.22.2 --locked
       - run: npm ci
