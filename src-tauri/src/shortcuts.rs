@@ -267,7 +267,7 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
     else {
         return;
     };
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     let InputEvent::Key { code, pressed } = event;
     if code == "alt_gr" {
         crate::storage::append_shortcut_diagnostic(if pressed {
@@ -287,7 +287,7 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
         return;
     }
     if capture_is_active(app) {
-        if pressed && !is_modifier_code(code) || pressed && code == "alt_gr" {
+        if pressed && (!is_modifier_code(code) || code == "alt_gr") {
             runtime.captured_keys.insert(code.to_string());
         }
         process_capture_key(app, &runtime.modifiers, code, pressed);
