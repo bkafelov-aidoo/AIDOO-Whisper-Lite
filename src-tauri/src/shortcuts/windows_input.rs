@@ -162,6 +162,34 @@ fn key_code(vk: u32, scan: u32, extended: bool) -> Option<&'static str> {
 mod tests {
     use super::*;
     #[test]
+    #[ignore = "requires the disposable Windows desktop"]
+    fn windows_physical_listener_receives_f8_edges() {
+        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+        use std::{sync::mpsc, time::Duration};
+        let (sender, receiver) = mpsc::channel();
+        install(sender);
+        std::thread::sleep(Duration::from_millis(500));
+        let mut keyboard = Enigo::new(&Settings::default()).unwrap();
+        keyboard.key(Key::F8, Direction::Press).unwrap();
+        keyboard.key(Key::F8, Direction::Release).unwrap();
+        for expected in [true, false] {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                let event = receiver
+                    .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                    .unwrap();
+                if let InputEvent::Key {
+                    code: "f8",
+                    pressed,
+                } = event
+                {
+                    assert_eq!(pressed, expected);
+                    break;
+                }
+            }
+        }
+    }
+    #[test]
     fn physical_keys_do_not_depend_on_keyboard_layout() {
         assert_eq!(key_code(0x77, 0x42, false), Some("f8"));
         assert_eq!(key_code(0x11, 0x1d, true), Some("control_right"));

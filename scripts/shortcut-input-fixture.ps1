@@ -8,17 +8,24 @@ public static class ShortcutInput {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
-  [DllImport("user32.dll")] public static extern void keybd_event(byte v, byte s, uint f, UIntPtr e);
+  [StructLayout(LayoutKind.Sequential)] public struct KeyInput { public ushort vk; public ushort scan; public uint flags; public uint time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Explicit, Size=40)] public struct Input { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KeyInput key; }
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, Input[] input, int size);
+  public static void Press(ushort vk, uint flags) {
+    var input = new Input { type=1, key=new KeyInput { vk=vk, flags=flags } };
+    if(SendInput(1, new[]{input}, 40)!=1) throw new Exception("Synthetic input was rejected.");
+  }
 }
 '@
 $app = @(Get-Process -Name aidoo-whisper-lite)[0]
 $app.Refresh()
+if ($app.MainWindowHandle -eq [IntPtr]::Zero) { throw 'Test app has no foreground window handle.' }
 [ShortcutInput]::ShowWindow($app.MainWindowHandle, 9) | Out-Null
 [ShortcutInput]::SetForegroundWindow($app.MainWindowHandle) | Out-Null
 Start-Sleep -Milliseconds 150
 if ([ShortcutInput]::GetForegroundWindow() -ne $app.MainWindowHandle) { throw 'Test app did not receive foreground focus.' }
 $key = switch ($Code) { 'f8' { 0x77 } 'f9' { 0x78 } 'control_right' { 0xa3 } 'kp_0' { 0x60 } }
 $flags = if ($Code -eq 'control_right') { 1 } else { 0 }
-[ShortcutInput]::keybd_event($key, 0, $flags, [UIntPtr]::Zero)
+[ShortcutInput]::Press($key, $flags)
 Start-Sleep -Milliseconds 200
-[ShortcutInput]::keybd_event($key, 0, ($flags -bor 2), [UIntPtr]::Zero)
+[ShortcutInput]::Press($key, ($flags -bor 2))
