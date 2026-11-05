@@ -17,13 +17,13 @@ try {
   socket.addEventListener('message',({data})=>{const m=JSON.parse(data);const q=pending.get(m.id);if(q){clearTimeout(q.timer);pending.delete(m.id);m.error?q.reject(new Error('CDP command failed')):q.resolve(m.result);}});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++sequence;const timer=setTimeout(()=>reject(new Error('CDP timeout')),10000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});
   const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error('Fixture evaluation failed');return r.result.value;};
-  await evaluate(`(async()=>{window.__shortcutProbe={events:[],domCodes:[]};window.addEventListener('keydown',event=>{if(['F8','F9','ControlRight','Numpad0','Insert'].includes(event.code))window.__shortcutProbe.domCodes.push(event.code);});const api=window.__TAURI_INTERNALS__;for(const event of ['shortcut:captured','shortcut:capture-error','recording:state','aidoo:shortcut-fixture']){const handler=api.transformCallback(e=>window.__shortcutProbe.events.push({event,payload:e.payload}));await api.invoke('plugin:event|listen',{event,target:{kind:'Any'},handler});}return true;})()`);
-  await evaluate(`window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'aidoo:shortcut-fixture',payload:'synthetic-check'})`);await pause(100);
-  result.eventChannelWorks=await evaluate(`window.__shortcutProbe.events.some(e=>e.event==='aidoo:shortcut-fixture')`);
+  await evaluate(`(async()=>{window.__shortcutProbe={events:[],domCodes:[]};window.addEventListener('keydown',event=>{if(['F8','F9','ControlRight','Numpad0','Insert'].includes(event.code))window.__shortcutProbe.domCodes.push(event.code);});const api=window.__TAURI_INTERNALS__;for(const event of ['shortcut:captured','shortcut:capture-error','recording:state','settings:changed']){const handler=api.transformCallback(e=>window.__shortcutProbe.events.push({event,payload:e.payload}));await api.invoke('plugin:event|listen',{event,target:{kind:'Any'},handler});}return true;})()`);
   const native=command=>evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)})`);
   const press=code=>execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',new URL('./shortcut-input-fixture.ps1',import.meta.url).pathname.replace(/^\/(\w:)/,'$1'),'-Code',code],{stdio:'pipe'});
   const initial=await native('bootstrap');
   if(initial.settings.onboardingComplete || initial.hasApiKey)throw new Error('Fixture must have no configured dictation or real API key.');
+  await evaluate(`window.__TAURI_INTERNALS__.invoke('update_settings',{settings:${JSON.stringify(initial.settings)}})`);await pause(100);
+  result.eventChannelWorks=await evaluate(`window.__shortcutProbe.events.some(e=>e.event==='settings:changed')`);
   await evaluate('window.__shortcutProbe.events=[]');press('f8');await pause(600);
   const f8=await evaluate(`window.__shortcutProbe.events.some(e=>e.event==='recording:state' && e.payload==='error')`);
   result.tests.push({case:'foreground_f8_reaches_native_readiness_guard',passed:f8,domReceived:await evaluate(`window.__shortcutProbe.domCodes.includes('F8')`)});
