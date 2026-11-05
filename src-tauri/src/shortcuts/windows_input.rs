@@ -1,7 +1,21 @@
 //! Physical Windows input only: no layout translation or AttachThreadInput in the hook.
 //! The callback forwards events; Tauri operations run on the existing processor thread.
 use super::InputEvent;
-use std::{cell::RefCell, sync::mpsc::Sender};
+use std::{
+    cell::RefCell,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::Sender,
+    },
+};
+static PROBE: AtomicBool = AtomicBool::new(false);
+pub(super) fn trace(stage: &str, code: &str, pressed: bool) {
+    if PROBE.load(Ordering::Relaxed)
+        && matches!(code, "f8" | "f9" | "control_right" | "kp_0" | "insert")
+    {
+        eprintln!("[DEBUG-shortcut-a12] {stage} {code} {pressed}");
+    }
+}
 
 thread_local! { static SENDER: RefCell<Option<Sender<InputEvent>>> = const { RefCell::new(None) }; }
 
@@ -49,6 +63,7 @@ unsafe extern "system" fn callback(code: i32, param: usize, data: isize) -> isiz
         // SAFETY: WH_KEYBOARD_LL supplies KBDLLHOOKSTRUCT for the duration of this call.
         let event = unsafe { &*(data as *const KeyboardEvent) };
         if let Some(code) = key_code(event.vk, event.scan, event.flags & 1 != 0) {
+            trace("raw", code, matches!(param, 0x100 | 0x104));
             SENDER.with(|sender| {
                 if let Some(sender) = sender.borrow().as_ref() {
                     let _ = sender.send(InputEvent::Key {
@@ -64,6 +79,14 @@ unsafe extern "system" fn callback(code: i32, param: usize, data: isize) -> isiz
 }
 
 pub(super) fn install(sender: Sender<InputEvent>) {
+    PROBE.store(
+        std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+            && std::env::var("AIDOO_SHORTCUT_CI_PROBE").as_deref() == Ok("true"),
+        Ordering::Relaxed,
+    );
+    if PROBE.load(Ordering::Relaxed) {
+        eprintln!("[DEBUG-shortcut-a12] install-called");
+    }
     std::thread::spawn(move || {
         SENDER.with(|slot| *slot.borrow_mut() = Some(sender));
         // SAFETY: callback and its thread-local sender outlive the hook. MSG has its Win32 ABI
@@ -74,10 +97,16 @@ pub(super) fn install(sender: Sender<InputEvent>) {
                 eprintln!("Could not install Windows keyboard hook");
                 return;
             }
+            if PROBE.load(Ordering::Relaxed) {
+                eprintln!("[DEBUG-shortcut-a12] installed");
+            }
             let mut message = Message::default();
             while GetMessageW(&mut message, 0, 0, 0) > 0 {
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
+            }
+            if PROBE.load(Ordering::Relaxed) {
+                eprintln!("[DEBUG-shortcut-a12] pump-ended");
             }
             UnhookWindowsHookEx(hook);
         }

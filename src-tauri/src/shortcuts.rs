@@ -269,6 +269,8 @@ fn process_event(app: &AppHandle, runtime: &mut ShortcutRuntime, event: InputEve
     };
     #[cfg(not(target_os = "macos"))]
     let InputEvent::Key { code, pressed } = event;
+    #[cfg(target_os = "windows")]
+    windows_input::trace("processed", code, pressed);
     if code == "alt_gr" {
         crate::storage::append_shortcut_diagnostic(if pressed {
             "right-option down received"
