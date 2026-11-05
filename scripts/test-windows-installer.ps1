@@ -53,6 +53,11 @@ try {
         if ($saved.dictationShortcut.code -ne 'f8') { throw 'Installed Windows shortcut is not F8.' }
         if ($saved.PSObject.Properties.Name -contains 'apiKey') { throw 'An API key appeared in settings.' }
     }
+    # Verify the foreground shortcut path on the exact installed payload, without mic/API use.
+    New-Item -ItemType Directory -Force 'release/shortcut-repro' | Out-Null
+    node (Join-Path $PSScriptRoot 'shortcut-repro.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Installed foreground shortcuts failed.' }
+    Copy-Item 'release/shortcut-repro/results.json' (Join-Path $output 'foreground-shortcuts.json')
 } finally {
     if (!$app.HasExited) { Stop-Process -Id $app.Id -Force }
 }
